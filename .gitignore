@@ -1,0 +1,8 @@
+# Ignore model files and other large data
+models/
+__pycache__/
+*.wav
+*.mp3
+*.zip
+.DS_Store
+.env
