@@ -8,4 +8,6 @@ __pycache__/
 .env
 *.pyc
 *.pyo
-*.venv310
+venv310/
+venv/
+.venv/
