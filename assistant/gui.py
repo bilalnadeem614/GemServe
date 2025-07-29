@@ -11,7 +11,7 @@ class AssistantGUI(BoxLayout):
     def __init__(self, **kwargs):
         super().__init__(orientation='vertical', padding=10, spacing=10, **kwargs)
 
-        self.output = Label(size_hint_y=None, text='🔊 Ready.', halign='left', valign='top')
+        self.output = Label(size_hint_y=None, text='Listening.', halign='left', valign='top')
         self.output.bind(texture_size=self._update_label_height)
         scroll = ScrollView(size_hint=(1, 0.7))
         scroll.add_widget(self.output)
