@@ -1,4 +1,5 @@
-from assistant.gui import AssistantApp
+from assistant.core import Assistant
 
 if __name__ == '__main__':
-    AssistantApp().run()
+    assistant = Assistant()
+    assistant.run()

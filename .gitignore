@@ -11,3 +11,5 @@ __pycache__/
 venv310/
 venv/
 .venv/
+chat.txt
+temp/
