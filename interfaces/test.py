@@ -1,6 +1,15 @@
-import sys, os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from assistant.voice import listen_and_transcribe, speak
-from assistant.llm import ask_gemma
-from assistant import core
-print("✅ Import success!")
+from kivy.app import App
+from kivy.uix.label import Label
+from kivy.core.window import Window
+
+Window.size = (400, 200)
+
+class TestApp(App):
+    def build(self):
+        return Label(
+            text="Hello 👋 World 🌍",
+            font_name="assets/NotoColorEmoji.ttf",  # or your font path
+            font_size=32
+        )
+
+TestApp().run()
