@@ -1,5 +1,5 @@
 import datetime
-
+from interfaces.gui import AssistantApp
 class Assistant:
     """
     The core "brain" of the assistant.
@@ -52,3 +52,8 @@ class Assistant:
         else:
             # Default response for unrecognized commands
             return "I'm sorry, I didn't understand that. Can you please rephrase?"
+    # assistant/core.py
+
+    def run(self):
+        print("Assistant is running...")
+        AssistantApp().run()
