@@ -1,3 +1,4 @@
+# Librarires for GUI
 from kivy.app import App
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.label import Label
@@ -13,10 +14,9 @@ from assistant.voice import listen_and_transcribe, speak
 from assistant.llm import ask_gemma
 
 
-# Optional: Set window size for desktop
-# Window.size = (600, 700)
+# Window.size = (600, 700) # This line of code is for specific window size of the app.
 Window.clearcolor = (0.1, 0.1, 0.1, 1)  # Dark background
-Window.maximize()
+Window.maximize() # This line of code is for full screen size of the app.
 class AssistantGUI(BoxLayout):
     output_text = StringProperty("Welcome to GemServe 👋\n")
 
@@ -28,7 +28,7 @@ class AssistantGUI(BoxLayout):
             text="🎙️ GemServe - Your Voice Assistant",
             font_name = "seguiemj.ttf",
             size_hint=(1, 0.1),
-            font_size='20sp',
+            font_size='17sp',
             bold=True,
             color=(1, 1, 1, 1)
         )
