@@ -3,7 +3,7 @@
 def listen_and_transcribe():
     # Simulate voice input (you'll replace this with Vosk or STT later)
     print("Listening simulated...")
-    return "What is the weather today?"
+    return "Beautiful"
 
 def speak(text):
     # Simulate text-to-speech output
