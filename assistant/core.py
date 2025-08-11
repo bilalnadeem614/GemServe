@@ -1,5 +1,5 @@
 import datetime
-from interfaces.gui import AssistantApp
+from interfaces.gui import GemServeApp
 class Assistant:
     """
     The core "brain" of the assistant.
@@ -56,4 +56,4 @@ class Assistant:
 
     def run(self):
         print("Assistant is running...")
-        AssistantApp().run()
+        GemServeApp().run()
