@@ -21,3 +21,26 @@ def ask_gemma(prompt):
         json={"model": OLLAMA_MODEL_NAME, "prompt": prompt, "stream": False}
     )
     return response.json().get("response", "[No response]")
+
+# --- Assistant Configuration ---
+# ASSISTANT_NAME = "GemServe"
+
+# # LLM Model
+# OLLAMA_MODEL_NAME = "gemma3n:e2b"
+# OLLAMA_API_URL = "http://localhost:11434/api/generate"
+
+# # Paths
+# VOSK_MODEL_PATH = "models/vosk-model-small-en-us-0.15"
+
+# import requests
+
+# def ask_gemma(prompt):
+#     try:
+#         response = requests.post(
+#             OLLAMA_API_URL,
+#             json={"model": OLLAMA_MODEL_NAME, "prompt": prompt, "stream": False},
+#             timeout=60
+#         )
+#         return response.json().get("response", "[No response]")
+#     except Exception as e:
+#         return f"[Error calling LLM] {e}"
