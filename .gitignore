@@ -8,9 +8,10 @@ __pycache__/
 .env
 *.pyc
 *.pyo
+venv312/
 venv310/
 venv/
 .venv/
-chat.txt
+chat.txts
 temp/
 test/
