@@ -1,5 +1,5 @@
 # Ignore model files and other large data
-models/
+models/*
 __pycache__/
 *.wav
 *.mp3
@@ -13,5 +13,5 @@ venv310/
 venv/
 .venv/
 chat.txts
-temp/
-test/
+temp/*
+test/*
