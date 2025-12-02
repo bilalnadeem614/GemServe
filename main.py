@@ -1,48 +1,57 @@
 # main.py
 from PySide6.QtWidgets import QApplication, QStackedWidget
-
 import sys
+
 from gui.Home_Page import HomePage
 from gui.profile_update import SettingsPage
 from gui.todo_page import TodoList
+from gui.Chat_Bot import ChatWindow   # <-- Chatbot import
+
 
 class App(QStackedWidget):
     def __init__(self):
         super().__init__()
 
         # Pages
-        self.home_page = HomePage(self.open_settings, self.open_task)
+        self.home_page = HomePage(
+            self.open_settings,
+            self.open_task,
+            self.open_chatbot  # <-- Chatbot ko open karne ka function
+        )
+
         self.settings_page = SettingsPage(self.settings_saved)
         self.todo_page = TodoList(self.go_home)
+        self.chatbot_page = ChatWindow(self.go_home)   # <-- Pass go_home callback
 
-        # Add pages to the stack
+        # Add pages
         self.addWidget(self.home_page)
         self.addWidget(self.settings_page)
         self.addWidget(self.todo_page)
+        self.addWidget(self.chatbot_page)  # <-- Added chatbot page
         
         # Default page
         self.setCurrentWidget(self.home_page)
 
+    # -------- Navigation Functions ---------
+
     def open_settings(self):
-        """Navigate to Settings Page"""
         self.setCurrentWidget(self.settings_page)
 
     def settings_saved(self, data):
-        """
-        Called when user presses 'Save' in Settings page.
-        data = { 'name': ..., 'email': ..., 'image_path': ... }
-        """
         self.home_page.update_data(data)
         self.setCurrentWidget(self.home_page)
 
     def open_task(self):
-        """Navigate to Todo List Page"""
         self.setCurrentWidget(self.todo_page)
-        
+
+    def open_chatbot(self):   # <-- NEW
+        self.setCurrentWidget(self.chatbot_page)
+
     def go_home(self):
-        """Navigate back to Home Page"""
         self.setCurrentWidget(self.home_page)
-        
+
+
+# ---------------- MAIN APP ----------------
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = App()

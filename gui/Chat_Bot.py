@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QLabel, QLineEdit, QScrollArea, QFrame, QSizePolicy, QFileDialog
 )
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QIcon
 
 
@@ -26,12 +26,10 @@ class MessageBubble(QFrame):
         self.setFrameShape(QFrame.NoFrame)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
 
-        # MESSAGE LABEL
         bubble = QLabel(text)
         bubble.setWordWrap(True)
         bubble.setTextInteractionFlags(Qt.TextSelectableByMouse)
 
-        # BADGE (U or AI)
         badge = QLabel("U" if is_user else "AI")
         badge.setFixedSize(28, 28)
         badge.setAlignment(Qt.AlignCenter)
@@ -42,7 +40,6 @@ class MessageBubble(QFrame):
             font-weight: bold;
         """)
 
-        # STYLES
         if is_user:
             bubble.setStyleSheet("""
                 background: white;
@@ -51,7 +48,6 @@ class MessageBubble(QFrame):
                 border-radius: 8px;
                 max-width: 65%;
             """)
-
             layout = QHBoxLayout()
             layout.addStretch()
             layout.addWidget(bubble)
@@ -65,7 +61,6 @@ class MessageBubble(QFrame):
                 border-radius: 8px;
                 max-width: 65%;
             """)
-
             layout = QHBoxLayout()
             layout.addWidget(badge)
             layout.addWidget(bubble)
@@ -78,9 +73,9 @@ class MessageBubble(QFrame):
 
 # ----------------------- MAIN CHAT WINDOW ------------------------
 class ChatWindow(QWidget):
-    def __init__(self):
+    def __init__(self, go_home_callback):
         super().__init__()
-        self.setWindowTitle("Chatbot")
+        self.go_home = go_home_callback     # <-- Back button handler
         self.setMinimumSize(450, 620)
         self.setup_ui()
 
@@ -108,7 +103,7 @@ class ChatWindow(QWidget):
             }
             QPushButton:hover { background: #5a5a5a; }
         """)
-        back_btn.clicked.connect(self.close)
+        back_btn.clicked.connect(self.go_home)  # <-- Important
 
         title = QLabel("Chatbot")
         title.setStyleSheet("color: white; font-size: 18px; font-weight: 600;")
@@ -159,7 +154,6 @@ class ChatWindow(QWidget):
         w_layout = QHBoxLayout(wrapper)
         w_layout.setContentsMargins(45, 0, 45, 0)
 
-        # TEXT BOX
         self.input = QLineEdit()
         self.input.setPlaceholderText("Type a message...")
         self.input.setStyleSheet("""
@@ -172,13 +166,11 @@ class ChatWindow(QWidget):
         self.input.returnPressed.connect(self.on_send)
         w_layout.addWidget(self.input)
 
-        # MIC BUTTON
         self.mic_btn = QPushButton("🎤", wrapper)
         self.mic_btn.setGeometry(8, 7, 30, 30)
         self.mic_btn.setStyleSheet("background: none; border: none;")
         self.mic_btn.clicked.connect(self.on_mic_click)
 
-        # FILE BUTTON
         self.file_btn = QPushButton("📎", wrapper)
         self.file_btn.setStyleSheet("background: none; border: none;")
         self.file_btn.clicked.connect(self.on_file_upload)
@@ -187,7 +179,6 @@ class ChatWindow(QWidget):
             wrapper.width() - 38, 7, 30, 30
         )
 
-        # SEND BUTTON
         send_btn = QPushButton("Send")
         send_btn.setStyleSheet("""
             QPushButton {
@@ -219,10 +210,10 @@ class ChatWindow(QWidget):
         text = self.input.text().strip()
         if not text:
             return
+
         self.add_message(text, True)
         self.input.clear()
 
-        # Fake AI reply
         QTimer.singleShot(200, lambda: self.add_message("AI: " + text, False))
 
     def on_mic_click(self):
@@ -234,10 +225,10 @@ class ChatWindow(QWidget):
             self.add_message(f"📎 File Selected:\n{file}", True)
 
 
-# ---------------- MAIN ----------------
+# ---------------- MAIN (Not used in main app) ----------------
 def main():
     app = QApplication(sys.argv)
-    w = ChatWindow()
+    w = ChatWindow(lambda: w.close())  # For standalone testing
     w.show()
     sys.exit(app.exec())
 
