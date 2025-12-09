@@ -25,13 +25,26 @@ def build_context_prompt(session_id, user_query):
     # 1. System Prompt
     prompt_parts.append(SYSTEM_PROMPT)
     
-    # 2. User Preferences
+    # 2. User Preferences & Personalization
     user_data_file = "user_data.json"
+    user_notes_file = "user_notes.json"
+    
+    # Load user data
     if os.path.exists(user_data_file):
         with open(user_data_file, 'r') as f:
             user_data = json.load(f)
             if user_data.get("name"):
                 prompt_parts.append(f"\nUser's name: {user_data['name']}")
+    
+    # Load user notes for personalization
+    if os.path.exists(user_notes_file):
+        with open(user_notes_file, 'r') as f:
+            user_notes = json.load(f)
+            notes_content = user_notes.get("notes", "").strip()
+            if notes_content:
+                prompt_parts.append("\n--- User Personalization Notes ---")
+                prompt_parts.append(notes_content)
+                prompt_parts.append("(Use this information to personalize responses and understand the user's preferences, context, and needs.)")
     
     # 3. Check if session has files
     has_files = check_session_has_files(session_id)
