@@ -1,4 +1,3 @@
-# main.py
 from PySide6.QtWidgets import QApplication, QStackedWidget
 import sys
 import json
@@ -9,26 +8,31 @@ from gui.profile_update import SettingsPage
 from gui.todo_page import TodoList
 from gui.Chat_Bot import ChatWindow
 
-DATA_FILE = "user_data.json"
+# Import database initialization
+from db import init_database
 
+DATA_FILE = "user_data.json"
 
 class App(QStackedWidget):
     def __init__(self):
         super().__init__()
 
+        # Initialize database
+        init_database()
+        print("✅ Application started")
+
         # Load dark mode preference
         self.dark_mode = self.load_dark_mode()
-
         # Pages
         self.home_page = HomePage(
             self.open_settings,
             self.open_task,
-            self.open_chatbot
+            self.open_chatbot_new,
+            self.open_chatbot_session  # New: open specific session
         )
-
         self.settings_page = SettingsPage(self.settings_saved)
         self.todo_page = TodoList(self.go_home)
-        self.chatbot_page = ChatWindow(self.go_home)
+        self.chatbot_page = ChatWindow(self.go_home, self.refresh_home)
 
         # Add pages
         self.addWidget(self.home_page)
@@ -42,7 +46,7 @@ class App(QStackedWidget):
         # Default page
         self.setCurrentWidget(self.home_page)
 
-    # -------- Navigation Functions ---------
+        # -------- Navigation Functions ---------
 
     def open_settings(self):
         self.setCurrentWidget(self.settings_page)
@@ -57,12 +61,22 @@ class App(QStackedWidget):
     def open_task(self):
         self.setCurrentWidget(self.todo_page)
 
-    def open_chatbot(self):
+    def open_chatbot_new(self):
+        """Open chatbot for new session"""
+        self.chatbot_page.start_new_session()
+        self.setCurrentWidget(self.chatbot_page)
+    def open_chatbot_session(self, session_id):
+        """Open chatbot with specific session loaded"""
+        self.chatbot_page.load_session(session_id)
         self.setCurrentWidget(self.chatbot_page)
 
     def go_home(self):
+        self.refresh_home()
         self.setCurrentWidget(self.home_page)
 
+    def refresh_home(self):
+        """Refresh home page chat sessions"""
+        self.home_page.refresh_chat_sessions()
     # -------- Dark Mode Functions ---------
 
     def load_dark_mode(self):
@@ -84,12 +98,12 @@ class App(QStackedWidget):
             self.todo_page.apply_dark_mode(False)
             self.chatbot_page.apply_dark_mode(False)
 
-
-# ---------------- MAIN APP ----------------
+            # ---------------- MAIN APP ----------------
+            
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = App()
     window.resize(900, 600)
-    window.setWindowTitle("AI Assistant")
+    window.setWindowTitle("GemServe - AI Assistant")
     window.show()
     sys.exit(app.exec())

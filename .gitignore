@@ -15,3 +15,6 @@ venv/
 chat.txts
 temp/*
 test/*
+data/*
+user_data.json
+user_notes.json
