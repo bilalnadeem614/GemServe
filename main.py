@@ -7,8 +7,7 @@ from gui.Home_Page import HomePage
 from gui.profile_update import SettingsPage
 from gui.todo_page import TodoList
 from gui.Chat_Bot import ChatWindow
-
-# Import database initialization
+from services.notifier import start_scheduler
 from db import init_database
 
 DATA_FILE = "user_data.json"
@@ -102,6 +101,7 @@ class App(QStackedWidget):
             
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    start_scheduler()
     window = App()
     window.resize(900, 600)
     window.setWindowTitle("GemServe - AI Assistant")
