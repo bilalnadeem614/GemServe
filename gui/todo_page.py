@@ -1,18 +1,15 @@
-# todo_page.py
+from services.db_helper import insert_task, init_database, DB_PATH
+from utils.extract_info import extract_info
 from PySide6.QtWidgets import (
-    QWidget,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QLineEdit,
-    QScrollArea,
-    QFrame,
-    QCheckBox,
-    QSizePolicy,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
+    QLineEdit, QScrollArea, QFrame, QCheckBox
 )
-from PySide6.QtGui import Qt
-from PySide6.QtCore import QSize
+from PySide6.QtCore import Qt
+from datetime import datetime
+import sqlite3
+
+# Initialize database
+init_database()
 
 
 class TodoList(QWidget):
@@ -20,351 +17,214 @@ class TodoList(QWidget):
         super().__init__()
 
         self.go_back = go_back
-        self.tasks = []  # Store task widgets
-        self.dark_mode = False
+        self.dark_mode = False  # Default: light mode
 
-        self.setup_ui()
+        # --- MAIN LAYOUT ---
+        self.main_layout = QVBoxLayout()
+        self.main_layout.setContentsMargins(15, 15, 15, 15)
+        self.setLayout(self.main_layout)
 
-    def setup_ui(self):
-        main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(15, 15, 15, 15)
+        self.build_ui()
+        self.load_tasks()
 
-        # ====== TOP BAR ======
+    # =====================================================
+    # BUILD UI
+    # =====================================================
+    def build_ui(self):
+        # Top bar with back button and title
         top_bar = QHBoxLayout()
-
         self.back_btn = QPushButton("←")
-        self.back_btn.setObjectName("backBtn")
         self.back_btn.setFixedSize(40, 30)
         self.back_btn.setCursor(Qt.PointingHandCursor)
         self.back_btn.clicked.connect(self.go_back)
 
         self.title = QLabel("To-do")
-        self.title.setObjectName("title")
-        self.title.setAlignment(Qt.AlignCenter)
+        self.title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.title.setStyleSheet("font-size: 15px; font-weight: bold;")
 
         top_bar.addWidget(self.back_btn)
-        top_bar.addWidget(self.title, stretch=1)
-        top_bar.addSpacing(40)
+        top_bar.addWidget(self.title, 1)
+        top_bar.addSpacing(10)
+        self.main_layout.addLayout(top_bar)
 
-        main_layout.addLayout(top_bar)
+        # Divider line
+        divider = QFrame()
+        divider.setFrameShape(QFrame.HLine)
+        self.main_layout.addWidget(divider)
 
-        # Divider
-        self.line = QFrame()
-        self.line.setFrameShape(QFrame.HLine)
-        self.line.setObjectName("divider")
-        main_layout.addWidget(self.line)
+        # Two columns: Completed and Pending tasks
+        list_container = QHBoxLayout()
 
-        # ====== TASK LIST AREA ======
-        self.tasks_layout = QVBoxLayout()
-        self.tasks_layout.setSpacing(12)
+        # Completed Tasks Column
+        self.completed_layout = QVBoxLayout()
+        completed_title = QLabel("Completed Tasks")
+        completed_title.setObjectName("completedTitle")
+        completed_title.setAlignment(Qt.AlignLeft)
+        completed_title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        self.completed_layout.addWidget(completed_title)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("border: none;")
-        scroll.setObjectName("scrollArea")
+        completed_box = QWidget()
+        completed_box.setLayout(self.completed_layout)
+        completed_scroll = QScrollArea()
+        completed_scroll.setWidgetResizable(True)
+        completed_scroll.setWidget(completed_box)
 
-        container = QWidget()
-        container.setLayout(self.tasks_layout)
-        scroll.setWidget(container)
+        # Pending Tasks Column
+        self.pending_layout = QVBoxLayout()
+        pending_title = QLabel("Pending Tasks")
+        pending_title.setObjectName("pendingTitle")
+        pending_title.setAlignment(Qt.AlignLeft)
+        pending_title.setStyleSheet("font-size: 15px; font-weight: bold;")
+        self.pending_layout.addWidget(pending_title)
 
-        main_layout.addWidget(scroll)
+        pending_box = QWidget()
+        pending_box.setLayout(self.pending_layout)
+        pending_scroll = QScrollArea()
+        pending_scroll.setWidgetResizable(True)
+        pending_scroll.setWidget(pending_box)
 
-        # ====== NEW TASK INPUT ROW ======
+        list_container.addWidget(completed_scroll, 1)
+        list_container.addWidget(pending_scroll, 1)
+        self.main_layout.addLayout(list_container)
+
+        # Input row for adding tasks
         add_layout = QHBoxLayout()
-
         self.task_input = QLineEdit()
-        self.task_input.setObjectName("taskInput")
         self.task_input.setPlaceholderText("Enter new task...")
         self.task_input.setFixedHeight(35)
 
         self.add_button = QPushButton("+")
+        self.add_button.setObjectName("addBtn")
         self.add_button.setFixedSize(40, 35)
-        self.add_button.setObjectName("newTaskBtn")
         self.add_button.setCursor(Qt.PointingHandCursor)
         self.add_button.clicked.connect(self.create_task)
 
         add_layout.addWidget(self.add_button)
         add_layout.addWidget(self.task_input)
+        self.main_layout.addLayout(add_layout)
 
-        main_layout.addLayout(add_layout)
-        self.setLayout(main_layout)
-
-    # -----------------------------------------
-    # Dark Mode
-    # -----------------------------------------
+    # =====================================================
+    # DARK / LIGHT MODE
+    # =====================================================
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
 
-        # Update existing tasks
-        for task_data in self.tasks:
-            task_box = task_data["box"]
-            task_label = task_data["label"]
-            checkbox = task_data["checkbox"]
-
-            if enabled:
-                # Dark mode for task box
-                task_box.setStyleSheet(
-                    """
-                    QFrame#taskBox {
-                        background-color: #2d2d2d;
-                        border-radius: 8px;
-                        padding: 6px;
-                    }
-                """
-                )
-                # Dark mode for task label
-                is_checked = checkbox.isChecked()
-                task_label.setStyleSheet(
-                    f"""
-                    QLabel#taskLabel {{
-                        background-color: #3a3a3a;
-                        color: {'#666' if is_checked else '#e0e0e0'};
-                        padding: 8px;
-                        border-radius: 6px;
-                        text-decoration: {'line-through' if is_checked else 'none'};
-                    }}
-                """
-                )
-            else:
-                # Light mode for task box
-                task_box.setStyleSheet(
-                    """
-                    QFrame#taskBox {
-                        background-color: white;
-                        border-radius: 8px;
-                        padding: 6px;
-                        border: 1px solid #ddd;
-                    }
-                """
-                )
-                # Light mode for task label
-                is_checked = checkbox.isChecked()
-                task_label.setStyleSheet(
-                    f"""
-                    QLabel#taskLabel {{
-                        background-color: #f8f8f8;
-                        color: {'gray' if is_checked else 'black'};
-                        padding: 8px;
-                        border-radius: 6px;
-                        border: 1px solid #ddd;
-                        text-decoration: {'line-through' if is_checked else 'none'};
-                    }}
-                """
-                )
-
-        # Update main window style
         if enabled:
-            # DARK MODE
-            self.setStyleSheet(
-                """
-                QWidget {
-                    background-color: #1e1e1e;
-                    font-family: Arial;
-                    font-size: 15px;
-                }
-                QLabel#title {
-                    font-size: 22px;
-                    font-weight: bold;
-                    color: #e0e0e0;
-                    background-color: transparent;
-                }
-                QLineEdit#taskInput {
-                    background-color: #3a3a3a;
-                    color: #e0e0e0;
-                    padding: 8px;
-                    border-radius: 6px;
-                    border: 1px solid #555;
-                }
-                QCheckBox {
-                    height: 20px;
-                    width: 20px;
-                }
-                QPushButton#newTaskBtn {
-                    background-color: #4CAF50;
-                    color: white;  
-                    border-radius: 4px;
-                    font-size: 20px;
-                    font-weight: bold;
-                }
-                QPushButton#newTaskBtn:hover {
-                    background-color: #45a049;
-                }
-                QPushButton#backBtn {
-                    color: #e0e0e0;
-                    font-weight: bold;
-                    font-size: 18px;
-                    background-color: transparent;
-                    border: none;
-                }
-                QFrame#divider {
-                    background-color: #444;
-                    min-height: 2px;
-                    max-height: 2px;
-                }
-                QScrollArea#scrollArea {
-                    background-color: #1e1e1e;
-                }
-            """
-            )
+            self.setStyleSheet("""
+                QWidget { background-color: #1e1e1e; color: #ddd; }
+                QLabel#completedTitle { color: #7fff7f; font-size: 18px; font-weight: bold; }
+                QLabel#pendingTitle { color: #fff; font-size: 18px; font-weight: bold; }
+                QLineEdit { background-color: #333; color: #fff; border: 1px solid #555; padding: 8px; }
+                QPushButton#addBtn { background-color: #4caf50; color: white; border-radius: 6px; }
+            """)
         else:
-            # LIGHT MODE
-            self.setStyleSheet(
-                """
-                QWidget {
-                    background-color: #f0f0f0;
-                    font-family: Arial;
-                    font-size: 15px;
-                }
-                QLabel#title {
-                    font-size: 22px;
-                    font-weight: bold;
-                    color: black;
-                    background-color: transparent;
-                }
-                QLineEdit#taskInput {
-                    background-color: white;
-                    color: black;
-                    padding: 8px;
-                    border-radius: 6px;
-                    border: 1px solid #ccc;
-                }
-                QCheckBox {
-                    height: 20px;
-                    width: 20px;
-                }
-                QPushButton#newTaskBtn {
-                    background-color: black;
-                    color: white;  
-                    border-radius: 4px;
-                    font-size: 20px;
-                    font-weight: bold;
-                }
-                QPushButton#newTaskBtn:hover {
-                    background-color: #333;
-                }
-                QPushButton#backBtn {
-                    color: black;
-                    font-weight: bold;
-                    font-size: 18px;
-                    background-color: transparent;
-                    border: none;
-                }
-                QFrame#divider {
-                    background-color: #ccc;
-                    min-height: 2px;
-                    max-height: 2px;
-                }
-            """
-            )
+            self.setStyleSheet("""
+                QWidget { background-color: #f0f0f0; color: #222; }
+                QLabel#completedTitle { color: green; font-size: 18px; font-weight: bold; }
+                QLabel#pendingTitle { color: black; font-size: 18px; font-weight: bold; }
+                QLineEdit { background-color: #d9d9d9; color: black; padding: 5px; }
+                QPushButton#addBtn { background-color: black; color: white; border-radius: 6px; }
+            """)
 
-    # -----------------------------------------
-    # ADD NEW TASK
-    # -----------------------------------------
+        self.load_tasks()
+
+    # =====================================================
+    # CREATE TASK
+    # =====================================================
     def create_task(self):
-        task_text = self.task_input.text().strip()
-        if task_text == "":
+        raw_text = self.task_input.text().strip()
+        if not raw_text:
             return
 
-        task_box = QFrame()
-        task_box.setObjectName("taskBox")
-        if self.dark_mode:
-            task_box.setStyleSheet(
-                """
-                QFrame#taskBox {
-                    background-color: #2d2d2d;
-                    border-radius: 8px;
-                    padding: 6px;
-                }
-            """
-            )
-        else:
-            task_box.setStyleSheet(
-                """
-                QFrame#taskBox {
-                    background-color: white;
-                    border-radius: 8px;
-                    padding: 6px;
-                    border: 1px solid #ddd;
-                }
-            """
-            )
+        title, task_date, task_time = extract_info(raw_text)
+        task_time = datetime.strptime(task_time, "%I:%M %p").strftime("%I:%M %p")
 
-        task_layout = QHBoxLayout(task_box)
-        task_layout.setContentsMargins(0, 0, 0, 0)
-        task_layout.setSpacing(10)
+        insert_task(title, task_date, task_time)
+        self.task_input.clear()
+        self.load_tasks()
+
+    # =====================================================
+    # LOAD TASKS FROM DATABASE
+    # =====================================================
+    def load_tasks(self):
+        # Remove old widgets except titles
+        for layout in [self.completed_layout, self.pending_layout]:
+            while layout.count() > 1:
+                item = layout.takeAt(1)
+                if item.widget():
+                    item.widget().deleteLater()
+
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, title, is_done FROM tasks ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        conn.close()
+
+        for task_id, title, done in rows:
+            if done:
+                self.add_completed_task(task_id, title)
+            else:
+                self.add_pending_task(task_id, title)
+
+    # =====================================================
+    # ADD TASK WIDGET
+    # =====================================================
+    def _add_task_widget(self, layout, task_id, text, done=False):
+        bg = "#2d2d2d" if self.dark_mode else "#e0e0e0"
+        hover = "#444" if self.dark_mode else "#b0b0b0"
+        text_color = "#ddd" if self.dark_mode else "#222"
+        hover_text = "white"
+        font_style = "font-size: 15px; font-weight: bold;"
+
+        task_box = QFrame()
+        task_box.setStyleSheet(f"background-color: {bg}; border-radius: 8px;")
+
+        h_layout = QHBoxLayout(task_box)
+        h_layout.setContentsMargins(6, 6, 6, 6)
+        h_layout.setSpacing(10)
 
         checkbox = QCheckBox()
-        checkbox.setFixedSize(20, 20)
+        checkbox.setChecked(done)
         checkbox.setCursor(Qt.PointingHandCursor)
 
-        task_label = QLabel(task_text)
-        task_label.setObjectName("taskLabel")
-        if self.dark_mode:
-            task_label.setStyleSheet(
-                """
-                QLabel#taskLabel {
-                    background-color: #3a3a3a;
-                    color: #e0e0e0;
-                    padding: 8px;
-                    border-radius: 6px;
-                }
-            """
-            )
-        else:
-            task_label.setStyleSheet(
-                """
-                QLabel#taskLabel {
-                    background-color: #f8f8f8;
-                    color: black;
-                    padding: 8px;
-                    border-radius: 6px;
-                    border: 1px solid #ddd;
-                }
-            """
-            )
+        label = QLabel(text)
+        label.setStyleSheet(f"color: {text_color}; {font_style}")
+        label.setFixedHeight(35)
+        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
 
-        task_label.setFixedHeight(35)
-        task_label.setMinimumWidth(200)
-        task_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        h_layout.addWidget(checkbox)
+        h_layout.addWidget(label, 1)
 
-        task_layout.addWidget(checkbox)
-        task_layout.addWidget(task_label)
+        # Move task when checked
+        checkbox.stateChanged.connect(lambda s, tid=task_id: self.mark_done(tid, s))
 
-        # Store task reference
-        task_data = {"box": task_box, "label": task_label, "checkbox": checkbox}
-        self.tasks.append(task_data)
+        # Hover effect
+        def enter(event):
+            task_box.setStyleSheet(f"background-color: {hover}; border-radius: 8px;")
+            label.setStyleSheet(f"color: {hover_text}; {font_style}")
 
-        def update_style(state):
-            if self.dark_mode:
-                task_label.setStyleSheet(
-                    f"""
-                    QLabel#taskLabel {{
-                        background-color: #3a3a3a;
-                        color: {'#666' if state else '#e0e0e0'};
-                        padding: 8px;
-                        border-radius: 6px;
-                        text-decoration: {'line-through' if state else 'none'};
-                    }}
-                """
-                )
-            else:
-                task_label.setStyleSheet(
-                    f"""
-                    QLabel#taskLabel {{
-                        background-color: #f8f8f8;
-                        color: {'gray' if state else 'black'};
-                        padding: 8px;
-                        border-radius: 6px;
-                        border: 1px solid #ddd;
-                        text-decoration: {'line-through' if state else 'none'};
-                    }}
-                """
-                )
+        def leave(event):
+            task_box.setStyleSheet(f"background-color: {bg}; border-radius: 8px;")
+            label.setStyleSheet(f"color: {text_color}; {font_style}")
 
-        checkbox.stateChanged.connect(update_style)
+        task_box.enterEvent = enter
+        task_box.leaveEvent = leave
 
-        self.tasks_layout.addWidget(task_box)
-        self.tasks_layout.addStretch()
+        layout.addWidget(task_box)
 
-        self.task_input.clear()
-        print("Task added.")
+    def add_pending_task(self, task_id, text):
+        self._add_task_widget(self.pending_layout, task_id, text, done=False)
+
+    def add_completed_task(self, task_id, text):
+        self._add_task_widget(self.completed_layout, task_id, text, done=True)
+
+    # =====================================================
+    # UPDATE DATABASE AND RELOAD
+    # =====================================================
+    def mark_done(self, task_id, state):
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE tasks SET is_done = ? WHERE id = ?", (1 if state else 0, task_id))
+        conn.commit()
+        conn.close()
+        self.load_tasks()
