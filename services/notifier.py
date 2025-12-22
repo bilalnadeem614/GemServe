@@ -6,11 +6,11 @@ from datetime import datetime, timedelta
 from plyer import notification
 import threading
 import os
-from services.db_helper import update_task_status
+from db.todo_db_helper import update_task_status
 
 
 DB_FILE = "todotasks.db"
-DB_PATH = os.path.join("db", DB_FILE)
+DB_PATH = os.path.join("data", DB_FILE)
 
 
 def check_due_tasks():

@@ -3,7 +3,7 @@ from PySide6.QtWidgets import (
     QPushButton, QHBoxLayout, QDateEdit, QTimeEdit, QCheckBox
 )
 from PySide6.QtCore import Qt, QDate, QTime, Signal
-from services.db_helper import update_task
+from db.todo_db_helper import update_task
 
 class EditTaskPage(QWidget):
     task_updated = Signal()
@@ -58,6 +58,79 @@ class EditTaskPage(QWidget):
         layout.addWidget(self.status_checkbox)
         layout.addWidget(save_btn)
 
+        
+    def apply_dark_mode(self, enabled):
+        """Applies consistent dark/light themes to the edit window."""
+        if enabled:
+            self.setStyleSheet("""
+                /* Main Background */
+                QWidget { 
+                    background-color: #1e1e1e; 
+                    color: #ffffff; 
+                    font-family: Arial; 
+                }
+
+                /* Input Fields (Dark) */
+                QLineEdit, QDateEdit, QTimeEdit { 
+                    background-color: #333333; 
+                    color: white; 
+                    border: 1px solid #555555; 
+                    border-radius: 5px; 
+                    padding: 8px; 
+                }
+
+                /* Labels */
+                QLabel { 
+                    font-weight: bold; 
+                    color: #bbbbbb; 
+                }
+
+                /* Save Button (Dark) */
+                QPushButton { 
+                    background-color: #4CAF50; 
+                    color: white; 
+                    font-weight: bold; 
+                    border-radius: 6px; 
+                }
+                QPushButton:hover { 
+                    background-color: #45a049; 
+                }
+            """)
+        else:
+            self.setStyleSheet("""
+                /* Main Background */
+                QWidget { 
+                    background-color: #f5f5f5; 
+                    color: #000000; 
+                    font-family: Arial; 
+                }
+
+                /* Input Fields (Light) */
+                QLineEdit, QDateEdit, QTimeEdit { 
+                    background-color: #ffffff; 
+                    color: black; 
+                    border: 1px solid #cccccc; 
+                    border-radius: 5px; 
+                    padding: 8px; 
+                }
+
+                /* Labels */
+                QLabel { 
+                    font-weight: bold; 
+                    color: #333333; 
+                }
+
+                /* Save Button (Light) */
+                QPushButton { 
+                    background-color: #000000; 
+                    color: #ffffff; 
+                    font-weight: bold; 
+                    border-radius: 6px; 
+                }
+                QPushButton:hover { 
+                    background-color: #333333; 
+                }
+            """)
     
     def save_task(self):
         new_title = self.title_input.text()

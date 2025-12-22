@@ -1,10 +1,10 @@
-from services.db_helper import insert_task, init_database, DB_PATH
+from db.todo_db_helper import insert_task, init_database, DB_PATH
 from utils.extract_info import extract_info
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QLineEdit, QScrollArea, QFrame, QCheckBox
 )
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from datetime import datetime
 import sqlite3
 
@@ -13,6 +13,7 @@ init_database()
 
 
 class TodoList(QWidget):
+    task_updated = Signal()
     def __init__(self, go_back):
         super().__init__()
 
@@ -37,6 +38,7 @@ class TodoList(QWidget):
         self.back_btn.setFixedSize(40, 30)
         self.back_btn.setCursor(Qt.PointingHandCursor)
         self.back_btn.clicked.connect(self.go_back)
+        
 
         self.title = QLabel("To-do")
         self.title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
@@ -111,23 +113,76 @@ class TodoList(QWidget):
 
         if enabled:
             self.setStyleSheet("""
-                QWidget { background-color: #1e1e1e; color: #ddd; }
-                QLabel#completedTitle { color: #7fff7f; font-size: 18px; font-weight: bold; }
-                QLabel#pendingTitle { color: #fff; font-size: 18px; font-weight: bold; }
-                QLineEdit { background-color: #333; color: #fff; border: 1px solid #555; padding: 8px; }
-                QPushButton#addBtn { background-color: #4caf50; color: white; border-radius: 6px; }
-            """)
+            /* Global Background and Text */
+            QWidget { 
+                background-color: #1e1e1e; 
+                color: #ddd; 
+            }
+
+            /* Section Titles */
+            QLabel#completedTitle { 
+                color: #7fff7f; 
+                font-size: 18px; 
+                font-weight: bold; 
+            }
+            QLabel#pendingTitle { 
+                color: #fff; 
+                font-size: 18px; 
+                font-weight: bold; 
+            }
+
+            /* Input Fields */
+            QLineEdit { 
+                background-color: #333; 
+                color: #fff; 
+                border: 1px solid #555; 
+                padding: 8px; 
+            }
+
+            /* Buttons */
+            QPushButton#addBtn { 
+                background-color: #4caf50; 
+                color: white; 
+                border-radius: 6px; 
+            }
+        """)
         else:
             self.setStyleSheet("""
-                QWidget { background-color: #f0f0f0; color: #222; }
-                QLabel#completedTitle { color: green; font-size: 18px; font-weight: bold; }
-                QLabel#pendingTitle { color: black; font-size: 18px; font-weight: bold; }
-                QLineEdit { background-color: #d9d9d9; color: black; padding: 5px; }
-                QPushButton#addBtn { background-color: black; color: white; border-radius: 6px; }
-            """)
+            /* Global Background and Text */
+            QWidget { 
+                background-color: #f0f0f0; 
+                color: #222; 
+            }
+
+            /* Section Titles */
+            QLabel#completedTitle { 
+                color: green; 
+                font-size: 18px; 
+                font-weight: bold; 
+            }
+            QLabel#pendingTitle { 
+                color: black; 
+                font-size: 18px; 
+                font-weight: bold; 
+            }
+
+            /* Input Fields */
+            QLineEdit { 
+                background-color: #d9d9d9; 
+                color: black; 
+                padding: 5px; 
+            }
+
+            /* Buttons */
+            QPushButton#addBtn { 
+                background-color: black; 
+                color: white; 
+                border-radius: 6px; 
+            }
+        """)
 
         self.load_tasks()
-
+        
     # =====================================================
     # CREATE TASK
     # =====================================================
@@ -140,6 +195,7 @@ class TodoList(QWidget):
         task_time = datetime.strptime(task_time, "%I:%M %p").strftime("%I:%M %p")
 
         insert_task(title, task_date, task_time)
+        self.task_updated.emit()
         self.task_input.clear()
         self.load_tasks()
 
