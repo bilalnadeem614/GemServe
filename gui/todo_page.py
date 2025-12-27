@@ -1,4 +1,4 @@
-from db.todo_db_helper import insert_task, init_database, DB_PATH
+from db.todo_db_helper import insert_task, init_database, delete_task, get_all_tasks, update_task_status
 from utils.extract_info import extract_info
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -6,7 +6,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal
 from datetime import datetime
-import sqlite3
 
 # Initialize database
 init_database()
@@ -18,174 +17,475 @@ class TodoList(QWidget):
         super().__init__()
 
         self.go_back = go_back
-        self.dark_mode = False  # Default: light mode
+        self.dark_mode = False
 
-        # --- MAIN LAYOUT ---
+        # Main Layout
         self.main_layout = QVBoxLayout()
-        self.main_layout.setContentsMargins(15, 15, 15, 15)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
         self.setLayout(self.main_layout)
 
         self.build_ui()
         self.load_tasks()
 
-    # =====================================================
-    # BUILD UI
-    # =====================================================
     def build_ui(self):
-        # Top bar with back button and title
-        top_bar = QHBoxLayout()
+        # Header Section
+        header = QFrame()
+        header.setObjectName("header")
+        header.setFixedHeight(80)
+        
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(30, 20, 30, 20)
+        
         self.back_btn = QPushButton("←")
-        self.back_btn.setFixedSize(40, 30)
+        self.back_btn.setObjectName("backButton")
+        self.back_btn.setFixedSize(45, 45)
         self.back_btn.setCursor(Qt.PointingHandCursor)
         self.back_btn.clicked.connect(self.go_back)
         
-
-        self.title = QLabel("To-do")
-        self.title.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        self.title.setStyleSheet("font-size: 15px; font-weight: bold;")
-
-        top_bar.addWidget(self.back_btn)
-        top_bar.addWidget(self.title, 1)
-        top_bar.addSpacing(10)
-        self.main_layout.addLayout(top_bar)
-
-        # Divider line
-        divider = QFrame()
-        divider.setFrameShape(QFrame.HLine)
-        self.main_layout.addWidget(divider)
-
-        # Two columns: Completed and Pending tasks
-        list_container = QHBoxLayout()
-
-        # Completed Tasks Column
-        self.completed_layout = QVBoxLayout()
-        completed_title = QLabel("Completed Tasks")
-        completed_title.setObjectName("completedTitle")
-        completed_title.setAlignment(Qt.AlignLeft)
-        completed_title.setStyleSheet("font-size: 15px; font-weight: bold;")
-        self.completed_layout.addWidget(completed_title)
-
-        completed_box = QWidget()
-        completed_box.setLayout(self.completed_layout)
-        completed_scroll = QScrollArea()
-        completed_scroll.setWidgetResizable(True)
-        completed_scroll.setWidget(completed_box)
-
+        self.title = QLabel("To-Do List")
+        self.title.setObjectName("headerTitle")
+        
+        header_layout.addWidget(self.back_btn)
+        header_layout.addWidget(self.title)
+        header_layout.addStretch()
+        
+        self.main_layout.addWidget(header)
+        
+        # Content Area
+        content = QFrame()
+        content.setObjectName("content")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(30, 30, 30, 30)
+        content_layout.setSpacing(25)
+        
+        # Two Column Layout
+        columns_layout = QHBoxLayout()
+        columns_layout.setSpacing(25)
+        
         # Pending Tasks Column
-        self.pending_layout = QVBoxLayout()
-        pending_title = QLabel("Pending Tasks")
-        pending_title.setObjectName("pendingTitle")
-        pending_title.setAlignment(Qt.AlignLeft)
-        pending_title.setStyleSheet("font-size: 15px; font-weight: bold;")
-        self.pending_layout.addWidget(pending_title)
-
+        pending_container = QFrame()
+        pending_container.setObjectName("taskColumn")
+        pending_col_layout = QVBoxLayout(pending_container)
+        pending_col_layout.setContentsMargins(25, 25, 25, 25)
+        pending_col_layout.setSpacing(15)
+        
+        pending_header = QLabel("PENDING TASKS")
+        pending_header.setObjectName("pendingTitle")
+        pending_col_layout.addWidget(pending_header)
+        
+        self.pending_scroll = QScrollArea()
+        self.pending_scroll.setObjectName("taskScroll")
+        self.pending_scroll.setWidgetResizable(True)
+        self.pending_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
         pending_box = QWidget()
-        pending_box.setLayout(self.pending_layout)
-        pending_scroll = QScrollArea()
-        pending_scroll.setWidgetResizable(True)
-        pending_scroll.setWidget(pending_box)
-
-        list_container.addWidget(completed_scroll, 1)
-        list_container.addWidget(pending_scroll, 1)
-        self.main_layout.addLayout(list_container)
-
-        # Input row for adding tasks
-        add_layout = QHBoxLayout()
-        self.task_input = QLineEdit()
-        self.task_input.setPlaceholderText("Enter new task...")
-        self.task_input.setFixedHeight(35)
-
+        pending_box.setObjectName("scrollContent")
+        self.pending_layout = QVBoxLayout(pending_box)
+        self.pending_layout.setSpacing(12)
+        self.pending_layout.addStretch()
+        self.pending_scroll.setWidget(pending_box)
+        
+        pending_col_layout.addWidget(self.pending_scroll)
+        
+        # Completed Tasks Column
+        completed_container = QFrame()
+        completed_container.setObjectName("taskColumn")
+        completed_col_layout = QVBoxLayout(completed_container)
+        completed_col_layout.setContentsMargins(25, 25, 25, 25)
+        completed_col_layout.setSpacing(15)
+        
+        completed_header = QLabel("COMPLETED TASKS")
+        completed_header.setObjectName("completedTitle")
+        completed_col_layout.addWidget(completed_header)
+        
+        self.completed_scroll = QScrollArea()
+        self.completed_scroll.setObjectName("taskScroll")
+        self.completed_scroll.setWidgetResizable(True)
+        self.completed_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        
+        completed_box = QWidget()
+        completed_box.setObjectName("scrollContent")
+        self.completed_layout = QVBoxLayout(completed_box)
+        self.completed_layout.setSpacing(12)
+        self.completed_layout.addStretch()
+        self.completed_scroll.setWidget(completed_box)
+        
+        completed_col_layout.addWidget(self.completed_scroll)
+        
+        columns_layout.addWidget(pending_container, 1)
+        columns_layout.addWidget(completed_container, 1)
+        content_layout.addLayout(columns_layout)
+        
+        # Input Section
+        input_frame = QFrame()
+        input_frame.setObjectName("inputFrame")
+        input_frame.setFixedHeight(70)
+        
+        input_layout = QHBoxLayout(input_frame)
+        input_layout.setContentsMargins(0, 0, 0, 0)
+        input_layout.setSpacing(15)
+        
         self.add_button = QPushButton("+")
-        self.add_button.setObjectName("addBtn")
-        self.add_button.setFixedSize(40, 35)
+        self.add_button.setObjectName("addButton")
+        self.add_button.setFixedSize(55, 55)
         self.add_button.setCursor(Qt.PointingHandCursor)
         self.add_button.clicked.connect(self.create_task)
+        
+        self.task_input = QLineEdit()
+        self.task_input.setObjectName("taskInput")
+        self.task_input.setPlaceholderText("Add a new task... (e.g., Meeting at 2025-01-01 03:00 pm)")
+        self.task_input.setFixedHeight(55)
+        self.task_input.returnPressed.connect(self.create_task)
+        
+        input_layout.addWidget(self.add_button)
+        input_layout.addWidget(self.task_input)
+        
+        content_layout.addWidget(input_frame)
+        self.main_layout.addWidget(content)
 
-        add_layout.addWidget(self.add_button)
-        add_layout.addWidget(self.task_input)
-        self.main_layout.addLayout(add_layout)
-
-    # =====================================================
-    # DARK / LIGHT MODE
-    # =====================================================
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
-
-        if enabled:
-            self.setStyleSheet("""
-            /* Global Background and Text */
-            QWidget { 
-                background-color: #1e1e1e; 
-                color: #ddd; 
-            }
-
-            /* Section Titles */
-            QLabel#completedTitle { 
-                color: #7fff7f; 
-                font-size: 18px; 
-                font-weight: bold; 
-            }
-            QLabel#pendingTitle { 
-                color: #fff; 
-                font-size: 18px; 
-                font-weight: bold; 
-            }
-
-            /* Input Fields */
-            QLineEdit { 
-                background-color: #333; 
-                color: #fff; 
-                border: 1px solid #555; 
-                padding: 8px; 
-            }
-
-            /* Buttons */
-            QPushButton#addBtn { 
-                background-color: #4caf50; 
-                color: white; 
-                border-radius: 6px; 
-            }
-        """)
-        else:
-            self.setStyleSheet("""
-            /* Global Background and Text */
-            QWidget { 
-                background-color: #f0f0f0; 
-                color: #222; 
-            }
-
-            /* Section Titles */
-            QLabel#completedTitle { 
-                color: green; 
-                font-size: 18px; 
-                font-weight: bold; 
-            }
-            QLabel#pendingTitle { 
-                color: black; 
-                font-size: 18px; 
-                font-weight: bold; 
-            }
-
-            /* Input Fields */
-            QLineEdit { 
-                background-color: #d9d9d9; 
-                color: black; 
-                padding: 5px; 
-            }
-
-            /* Buttons */
-            QPushButton#addBtn { 
-                background-color: black; 
-                color: white; 
-                border-radius: 6px; 
-            }
-        """)
-
-        self.load_tasks()
         
-    # =====================================================
-    # CREATE TASK
-    # =====================================================
+        scroll_style = """
+            QScrollArea#taskScroll {
+                border: none;
+                background: transparent;
+            }
+            QScrollBar:vertical {
+                width: 6px;
+                background: transparent;
+                margin: 4px;
+            }
+            QScrollBar::handle:vertical {
+                background: rgba(139, 92, 246, 0.3);
+                border-radius: 3px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: rgba(139, 92, 246, 0.5);
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """
+        
+        if enabled:
+            self.setStyleSheet(scroll_style + """
+                /* Main Background */
+                QWidget {
+                    background-color: #0A0E27;
+                    font-family: 'Inter', 'Segoe UI Variable', sans-serif;
+                }
+                
+                /* Header */
+                QFrame#header {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #6366F1, stop:0.5 #8B5CF6, stop:1 #6366F1);
+                    border: none;
+                }
+                
+                QPushButton#backButton {
+                    background: rgba(255, 255, 255, 0.15);
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 22px;
+                    font-size: 22px;
+                    font-weight: bold;
+                }
+                QPushButton#backButton:hover {
+                    background: rgba(255, 255, 255, 0.25);
+                }
+                
+                QLabel#headerTitle {
+                    color: #FFFFFF;
+                    font-size: 28px;
+                    font-weight: 800;
+                    letter-spacing: -1px;
+                    background: transparent;
+                }
+                
+                /* Content */
+                QFrame#content {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #0F172A, stop:1 #0A0E27);
+                }
+                
+                /* Task Columns */
+                QFrame#taskColumn {
+                    background: rgba(30, 41, 59, 0.4);
+                    border: 2px solid rgba(139, 92, 246, 0.2);
+                    border-radius: 20px;
+                }
+                
+                QWidget#scrollContent {
+                    background: transparent;
+                }
+                
+                /* Column Titles */
+                QLabel#pendingTitle {
+                    color: #60A5FA;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    background: transparent;
+                }
+                
+                QLabel#completedTitle {
+                    color: #34D399;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    background: transparent;
+                }
+                
+                /* Input Frame */
+                QFrame#inputFrame {
+                    background: transparent;
+                }
+                
+                /* Add Button */
+                QPushButton#addButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #6366F1, stop:1 #8B5CF6);
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 27px;
+                    font-size: 24px;
+                    font-weight: bold;
+                }
+                QPushButton#addButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #4F46E5, stop:1 #7C3AED);
+                }
+                
+                /* Task Input */
+                QLineEdit#taskInput {
+                    background: rgba(30, 41, 59, 0.6);
+                    color: #E2E8F0;
+                    border: 2.5px solid rgba(139, 92, 246, 0.25);
+                    border-radius: 27px;
+                    padding: 0 25px;
+                    font-size: 16px;
+                    font-weight: 500;
+                }
+                QLineEdit#taskInput:focus {
+                    border: 2.5px solid #8B5CF6;
+                }
+                QLineEdit#taskInput::placeholder {
+                    color: #64748B;
+                    font-style: italic;
+                }
+                
+                /* Task Items */
+                QFrame#taskItem {
+                    background: rgba(30, 41, 59, 0.5);
+                    border: 2px solid rgba(71, 85, 105, 0.3);
+                    border-radius: 14px;
+                }
+                QFrame#taskItem:hover {
+                    background: rgba(139, 92, 246, 0.1);
+                    border: 2px solid rgba(139, 92, 246, 0.4);
+                }
+                
+                QLabel#taskText {
+                    color: #E2E8F0;
+                    font-size: 15px;
+                    font-weight: 500;
+                    background: transparent;
+                }
+                
+                /* Checkbox */
+                QCheckBox::indicator {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 8px;
+                    border: 2.5px solid #64748B;
+                    background: rgba(15, 23, 42, 0.6);
+                }
+                QCheckBox::indicator:hover {
+                    border-color: #8B5CF6;
+                }
+                QCheckBox::indicator:checked {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #34D399, stop:1 #10B981);
+                    border-color: #34D399;
+                }
+                
+                /* Delete Button */
+                QPushButton#deleteButton {
+                    background: rgba(239, 68, 68, 0.15);
+                    color: #F87171;
+                    border: none;
+                    border-radius: 14px;
+                    font-size: 16px;
+                    font-weight: bold;
+                }
+                QPushButton#deleteButton:hover {
+                    background: rgba(239, 68, 68, 0.3);
+                    color: #EF4444;
+                }
+            """)
+        else:
+            self.setStyleSheet(scroll_style + """
+                /* Main Background */
+                QWidget {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #F8FAFC, stop:1 #EFF6FF);
+                    font-family: 'Inter', 'Segoe UI Variable', sans-serif;
+                }
+                
+                /* Header */
+                QFrame#header {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #6366F1, stop:0.5 #8B5CF6, stop:1 #6366F1);
+                    border: none;
+                }
+                
+                QPushButton#backButton {
+                    background: rgba(255, 255, 255, 0.2);
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 22px;
+                    font-size: 22px;
+                    font-weight: bold;
+                }
+                QPushButton#backButton:hover {
+                    background: rgba(255, 255, 255, 0.35);
+                }
+                
+                QLabel#headerTitle {
+                    color: #FFFFFF;
+                    font-size: 28px;
+                    font-weight: 800;
+                    letter-spacing: -1px;
+                    background: transparent;
+                }
+                
+                /* Content */
+                QFrame#content {
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #F8FAFC, stop:1 #EFF6FF);
+                }
+                
+                /* Task Columns */
+                QFrame#taskColumn {
+                    background: #FFFFFF;
+                    border: 2px solid rgba(139, 92, 246, 0.15);
+                    border-radius: 20px;
+                }
+                
+                QWidget#scrollContent {
+                    background: transparent;
+                }
+                
+                /* Column Titles */
+                QLabel#pendingTitle {
+                    color: #2563EB;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    background: transparent;
+                }
+                
+                QLabel#completedTitle {
+                    color: #059669;
+                    font-size: 11px;
+                    font-weight: 800;
+                    letter-spacing: 2px;
+                    background: transparent;
+                }
+                
+                /* Input Frame */
+                QFrame#inputFrame {
+                    background: transparent;
+                }
+                
+                /* Add Button */
+                QPushButton#addButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #6366F1, stop:1 #8B5CF6);
+                    color: #FFFFFF;
+                    border: none;
+                    border-radius: 27px;
+                    font-size: 24px;
+                    font-weight: bold;
+                }
+                QPushButton#addButton:hover {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #4F46E5, stop:1 #7C3AED);
+                }
+                
+                /* Task Input */
+                QLineEdit#taskInput {
+                    background: #FFFFFF;
+                    color: #0F172A;
+                    border: 2.5px solid rgba(226, 232, 240, 0.8);
+                    border-radius: 27px;
+                    padding: 0 25px;
+                    font-size: 16px;
+                    font-weight: 500;
+                }
+                QLineEdit#taskInput:focus {
+                    border: 2.5px solid #8B5CF6;
+                }
+                QLineEdit#taskInput::placeholder {
+                    color: #94A3B8;
+                    font-style: italic;
+                }
+                
+                /* Task Items */
+                QFrame#taskItem {
+                    background: rgba(248, 250, 252, 0.8);
+                    border: 2px solid rgba(226, 232, 240, 0.8);
+                    border-radius: 14px;
+                }
+                QFrame#taskItem:hover {
+                    background: rgba(245, 243, 255, 0.9);
+                    border: 2px solid rgba(139, 92, 246, 0.3);
+                }
+                
+                QLabel#taskText {
+                    color: #1E293B;
+                    font-size: 15px;
+                    font-weight: 500;
+                    background: transparent;
+                }
+                
+                /* Checkbox */
+                QCheckBox::indicator {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 8px;
+                    border: 2.5px solid #CBD5E1;
+                    background: #FFFFFF;
+                }
+                QCheckBox::indicator:hover {
+                    border-color: #8B5CF6;
+                }
+                QCheckBox::indicator:checked {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #34D399, stop:1 #10B981);
+                    border-color: #34D399;
+                }
+                
+                /* Delete Button */
+                QPushButton#deleteButton {
+                    background: rgba(239, 68, 68, 0.1);
+                    color: #DC2626;
+                    border: none;
+                    border-radius: 14px;
+                    font-size: 16px;
+                    font-weight: bold;
+                }
+                QPushButton#deleteButton:hover {
+                    background: rgba(239, 68, 68, 0.2);
+                    color: #B91C1C;
+                }
+            """)
+        
+        self.load_tasks()
+
     def create_task(self):
         raw_text = self.task_input.text().strip()
         if not raw_text:
@@ -199,74 +499,59 @@ class TodoList(QWidget):
         self.task_input.clear()
         self.load_tasks()
 
-    # =====================================================
-    # LOAD TASKS FROM DATABASE
-    # =====================================================
     def load_tasks(self):
-        # Remove old widgets except titles
-        for layout in [self.completed_layout, self.pending_layout]:
+        # Clear existing tasks
+        for layout in [self.pending_layout, self.completed_layout]:
             while layout.count() > 1:
-                item = layout.takeAt(1)
+                item = layout.takeAt(0)
                 if item.widget():
                     item.widget().deleteLater()
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, title, is_done FROM tasks ORDER BY created_at DESC")
-        rows = cursor.fetchall()
-        conn.close()
+        # Get all tasks
+        tasks = get_all_tasks()
 
-        for task_id, title, done in rows:
-            if done:
+        for task in tasks:
+            # Handle tuple unpacking safely
+            task_id = task[0]
+            title = task[1]
+            is_done = int(task[5])
+            
+            if is_done:
                 self.add_completed_task(task_id, title)
             else:
                 self.add_pending_task(task_id, title)
 
-    # =====================================================
-    # ADD TASK WIDGET
-    # =====================================================
     def _add_task_widget(self, layout, task_id, text, done=False):
-        bg = "#2d2d2d" if self.dark_mode else "#e0e0e0"
-        hover = "#444" if self.dark_mode else "#b0b0b0"
-        text_color = "#ddd" if self.dark_mode else "#222"
-        hover_text = "white"
-        font_style = "font-size: 15px; font-weight: bold;"
-
-        task_box = QFrame()
-        task_box.setStyleSheet(f"background-color: {bg}; border-radius: 8px;")
-
-        h_layout = QHBoxLayout(task_box)
-        h_layout.setContentsMargins(6, 6, 6, 6)
-        h_layout.setSpacing(10)
-
+        task_frame = QFrame()
+        task_frame.setObjectName("taskItem")
+        task_frame.setFixedHeight(60)
+        
+        task_layout = QHBoxLayout(task_frame)
+        task_layout.setContentsMargins(16, 0, 16, 0)
+        task_layout.setSpacing(12)
+        
+        # Checkbox
         checkbox = QCheckBox()
         checkbox.setChecked(done)
         checkbox.setCursor(Qt.PointingHandCursor)
-
-        label = QLabel(text)
-        label.setStyleSheet(f"color: {text_color}; {font_style}")
-        label.setFixedHeight(35)
-        label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-
-        h_layout.addWidget(checkbox)
-        h_layout.addWidget(label, 1)
-
-        # Move task when checked
         checkbox.stateChanged.connect(lambda s, tid=task_id: self.mark_done(tid, s))
-
-        # Hover effect
-        def enter(event):
-            task_box.setStyleSheet(f"background-color: {hover}; border-radius: 8px;")
-            label.setStyleSheet(f"color: {hover_text}; {font_style}")
-
-        def leave(event):
-            task_box.setStyleSheet(f"background-color: {bg}; border-radius: 8px;")
-            label.setStyleSheet(f"color: {text_color}; {font_style}")
-
-        task_box.enterEvent = enter
-        task_box.leaveEvent = leave
-
-        layout.addWidget(task_box)
+        
+        # Task Text
+        task_label = QLabel(text)
+        task_label.setObjectName("taskText")
+        
+        # Delete Button
+        delete_btn = QPushButton("✕")
+        delete_btn.setObjectName("deleteButton")
+        delete_btn.setFixedSize(32, 32)
+        delete_btn.setCursor(Qt.PointingHandCursor)
+        delete_btn.clicked.connect(lambda: self.delete_task(task_id))
+        
+        task_layout.addWidget(checkbox)
+        task_layout.addWidget(task_label, 1)
+        task_layout.addWidget(delete_btn)
+        
+        layout.insertWidget(layout.count() - 1, task_frame)
 
     def add_pending_task(self, task_id, text):
         self._add_task_widget(self.pending_layout, task_id, text, done=False)
@@ -274,13 +559,15 @@ class TodoList(QWidget):
     def add_completed_task(self, task_id, text):
         self._add_task_widget(self.completed_layout, task_id, text, done=True)
 
-    # =====================================================
-    # UPDATE DATABASE AND RELOAD
-    # =====================================================
-    def mark_done(self, task_id, state):
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("UPDATE tasks SET is_done = ? WHERE id = ?", (1 if state else 0, task_id))
-        conn.commit()
-        conn.close()
+    def mark_done(self, task_id, checked):
+        is_done = 1 if checked else 0
+        update_task_status(task_id, is_done)
+        self.task_updated.emit()
+        self.load_tasks()
+
+    
+    def delete_task(self, task_id):
+        """Delete a task from the database"""
+        delete_task(task_id)
+        self.task_updated.emit()
         self.load_tasks()

@@ -108,3 +108,15 @@ def get_today_or_upcoming_tasks():
         pass
 
     return tasks
+
+# Add this function for deleting a task
+def delete_task(task_id):
+    """Delete a task from the database"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+    conn.commit()
+    conn.close()
+    print(f"✅ Task {task_id} deleted")
+
+
