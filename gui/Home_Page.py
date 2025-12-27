@@ -2,12 +2,13 @@
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox
 )
-from PySide6.QtGui import QPixmap, QIcon, QPainter, QPainterPath
+from PySide6.QtGui import QPixmap, QIcon, QPainter, QPainterPath, QColor
 from PySide6.QtCore import QSize, Qt
 import json
 import os
+from datetime import datetime
 
-from db.todo_db_helper import get_today_or_upcoming_tasks, update_task_status
+from db.todo_db_helper import get_all_tasks, update_task_status
 from gui.edit_task_page import EditTaskPage
 from db import get_all_sessions
 
@@ -16,7 +17,6 @@ DATA_FILE = "user_data.json"
 class HomePage(QWidget):
     def __init__(self, go_to_settings, go_to_tasks, go_to_chatbot, open_chat_session):
         super().__init__()
-
         self.go_to_settings = go_to_settings
         self.go_to_tasks = go_to_tasks
         self.go_to_chatbot = go_to_chatbot
@@ -28,94 +28,122 @@ class HomePage(QWidget):
         self.load_task_rows(self.task_layout)
 
     def setup_ui(self):
-        main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(15)
-        main_layout.setContentsMargins(20, 20, 20, 20)
+        # Overall container layout
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(40, 35, 40, 40)
+        self.main_layout.setSpacing(30)
 
         # ---------------- TOP NAVBAR ----------------
         navbar = QHBoxLayout()
-        self.welcome_label = QLabel("Welcome")
+        header_text_layout = QVBoxLayout()
+        header_text_layout.setSpacing(4)
+        
+        self.welcome_label = QLabel("Welcome Back!")
         self.welcome_label.setObjectName("welcomeLabel")
-        self.welcome_label.setAlignment(Qt.AlignCenter)
-        navbar.addWidget(self.welcome_label, stretch=1)
+        
+        # Load user data to get the name
+        user_data = self.load_user_data()
+        user_name = user_data.get("name", "User")
+        
+        self.name_label = QLabel(user_name)
+        self.name_label.setObjectName("nameLabel")
+        
+        self.date_label = QLabel("Here is what's happening today.")
+        self.date_label.setObjectName("subLabel")
+        
+        header_text_layout.addWidget(self.welcome_label)
+        header_text_layout.addWidget(self.name_label)
+        header_text_layout.addWidget(self.date_label)
+        navbar.addLayout(header_text_layout, stretch=1)
 
         self.profile_button = QPushButton()
         self.profile_button.setObjectName("profileButton")
-        self.profile_button.setFixedSize(70, 70)
-        user_data = self.load_user_data()
+        self.profile_button.setFixedSize(65, 65)
+        self.profile_button.setCursor(Qt.PointingHandCursor)
+        
         self.set_profile_picture(user_data.get("image", ""))
         self.profile_button.clicked.connect(self.go_to_settings)
         navbar.addWidget(self.profile_button)
-        main_layout.addLayout(navbar)
-
-        # Divider
-        self.line = QFrame()
-        self.line.setFrameShape(QFrame.HLine)
-        self.line.setObjectName("divider")
-        main_layout.addWidget(self.line)
+        self.main_layout.addLayout(navbar)
 
         # ---------------- MAIN CONTENT ----------------
-        content_layout = QHBoxLayout()
+        grid_layout = QHBoxLayout()
+        grid_layout.setSpacing(30)
 
-        # ------------- CHATS PANEL -------------
-        chats_layout = QVBoxLayout()
-        self.chats_title = QLabel("Chats")
-        self.chats_title.setObjectName("sectionTitle")
-        self.chats_title.setAlignment(Qt.AlignCenter)
-        chats_layout.addWidget(self.chats_title)
+        # --- CHAT HISTORY (60% WIDTH) ---
+        self.chat_card = QFrame()
+        self.chat_card.setObjectName("chatCard")
+        chat_vbox = QVBoxLayout(self.chat_card)
+        chat_vbox.setContentsMargins(25, 25, 25, 25)
+
+        chat_header = QHBoxLayout()
+        self.chats_title = QLabel("CHAT HISTORY")
+        self.chats_title.setObjectName("sectionTitleChat")
+        
+        self.new_chat_btn = QPushButton("+")
+        self.new_chat_btn.setFixedSize(36, 36)
+        self.new_chat_btn.setObjectName("circularAddBtnChat")
+        self.new_chat_btn.clicked.connect(self.go_to_chatbot)
+        
+        chat_header.addWidget(self.chats_title)
+        chat_header.addStretch()
+        chat_header.addWidget(self.new_chat_btn)
+        chat_vbox.addLayout(chat_header)
 
         self.chat_scroll = QScrollArea()
         self.chat_scroll.setWidgetResizable(True)
-        self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.chat_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.chat_scroll.setObjectName("modernScroll")
         
-        chat_container = QWidget()
-        self.chat_buttons_layout = QVBoxLayout(chat_container)
-        self.chat_buttons_layout.setSpacing(10)
-        self.chat_buttons_layout.setContentsMargins(0,0,0,0)
-        self.chat_scroll.setWidget(chat_container)
-        chats_layout.addWidget(self.chat_scroll)
+        chat_content = QWidget()
+        chat_content.setObjectName("transparentBg")
+        self.chat_buttons_layout = QVBoxLayout(chat_content)
+        self.chat_buttons_layout.setSpacing(12)
+        self.chat_scroll.setWidget(chat_content)
+        chat_vbox.addWidget(self.chat_scroll)
 
-        self.new_chat_btn = QPushButton("New Chat")
-        self.new_chat_btn.setObjectName("smallButton")
-        self.new_chat_btn.clicked.connect(self.go_to_chatbot)
-        chats_layout.addWidget(self.new_chat_btn, alignment=Qt.AlignCenter)
-        content_layout.addLayout(chats_layout, stretch=1)
+        # --- PRIORITY TASKS (40% WIDTH) ---
+        self.task_card = QFrame()
+        self.task_card.setObjectName("taskCard")
+        task_vbox = QVBoxLayout(self.task_card)
+        task_vbox.setContentsMargins(25, 25, 25, 25)
 
-        # Vertical Divider
-        self.v_line = QFrame()
-        self.v_line.setFrameShape(QFrame.VLine)
-        self.v_line.setObjectName("divider")
-        self.v_line.setFixedWidth(2)
-        content_layout.addWidget(self.v_line)
-
-        # ------------- TASKS PANEL -------------
-        tasks_layout = QVBoxLayout()
-        self.tasks_title = QLabel("To-do List")
-        self.tasks_title.setObjectName("sectionTitle")
-        self.tasks_title.setAlignment(Qt.AlignCenter)
-        tasks_layout.addWidget(self.tasks_title)
+        task_header = QHBoxLayout()
+        self.tasks_title = QLabel("PRIORITY TASKS")
+        self.tasks_title.setObjectName("sectionTitleTask")
+        
+        self.new_task_btn = QPushButton("+")
+        self.new_task_btn.setFixedSize(36, 36)
+        self.new_task_btn.setObjectName("circularAddBtnTask")
+        self.new_task_btn.clicked.connect(self.go_to_tasks)
+        
+        task_header.addWidget(self.tasks_title)
+        task_header.addStretch()
+        task_header.addWidget(self.new_task_btn)
+        task_vbox.addLayout(task_header)
 
         self.task_scroll = QScrollArea()
         self.task_scroll.setWidgetResizable(True)
-        self.task_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.task_scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        self.task_scroll.setObjectName("modernScroll")
 
         self.task_content = QWidget()
+        self.task_content.setObjectName("transparentBg")
         self.task_layout = QVBoxLayout(self.task_content)
-        self.task_layout.setSpacing(10)
-        self.task_layout.setContentsMargins(5, 5, 5, 5)
-
+        self.task_layout.setSpacing(12)
         self.task_scroll.setWidget(self.task_content)
-        tasks_layout.addWidget(self.task_scroll)
+        task_vbox.addWidget(self.task_scroll)
 
-        self.new_task_btn = QPushButton("New Task")
-        self.new_task_btn.setObjectName("smallButton")
-        self.new_task_btn.clicked.connect(self.go_to_tasks)
-        tasks_layout.addWidget(self.new_task_btn, alignment=Qt.AlignCenter)
+        grid_layout.addWidget(self.chat_card, 5.5) # 55%
+        grid_layout.addWidget(self.task_card, 4.5) # 45%
+        self.main_layout.addLayout(grid_layout)
 
-        content_layout.addLayout(tasks_layout, stretch=1)
-        main_layout.addLayout(content_layout)
+    def update_data(self, data):
+        self.set_profile_picture(data.get("image", ""))
+        # Update the name label when data changes
+        user_name = data.get("name", "User")
+        self.name_label.setText(user_name)
+
+    def refresh_chat_sessions(self):
+        self.load_chat_sessions()
 
     def load_chat_sessions(self):
         while self.chat_buttons_layout.count():
@@ -124,34 +152,28 @@ class HomePage(QWidget):
         
         sessions = get_all_sessions()
         if not sessions:
-            lbl = QLabel("No chats yet.")
-            lbl.setAlignment(Qt.AlignCenter)
-            self.chat_buttons_layout.addWidget(lbl)
+            lbl = QLabel("No recent activity")
+            lbl.setObjectName("emptyMsg")
+            self.chat_buttons_layout.addWidget(lbl, alignment=Qt.AlignCenter)
         else:
             for session_id, title, updated_at in sessions:
-                btn = QPushButton(title)
-                btn.setObjectName("chatButton")
-                # Enforce height to match taskRow height (50px)
+                btn = QPushButton(f"  {title}")
+                btn.setObjectName("chatRow")
                 btn.setFixedHeight(50) 
                 btn.setCursor(Qt.PointingHandCursor)
                 btn.clicked.connect(lambda checked, sid=session_id: self.open_chat_session(sid))
                 self.chat_buttons_layout.addWidget(btn)
-        
         self.chat_buttons_layout.addStretch()
-
-    def refresh_chat_sessions(self):
-        self.load_chat_sessions()
 
     def load_task_rows(self, layout):
         while layout.count():
             child = layout.takeAt(0)
             if child.widget(): child.widget().deleteLater()
-        tasks = [t for t in get_today_or_upcoming_tasks() if t[5] == 0]
-        if not tasks:
-            msg = QLabel("No pending tasks")
-            msg.setAlignment(Qt.AlignCenter)
-            layout.addWidget(msg)
-            return
+        
+        all_tasks = get_all_tasks()
+        # Filter only pending tasks (is_done == 0)
+        tasks = [t for t in all_tasks if t[5] == 0]
+        
         for task in tasks:
             self.add_task_row(layout, task)
         layout.addStretch()
@@ -160,32 +182,35 @@ class HomePage(QWidget):
         task_id, title, task_date, task_time, created_at, is_done = task
         row = QWidget()
         row.setObjectName("taskRow")
-        row.setFixedHeight(50)
+        row.setFixedHeight(58)
         row.setCursor(Qt.PointingHandCursor)
 
         row_layout = QHBoxLayout(row)
-        row_layout.setContentsMargins(12, 5, 12, 5)
-        row_layout.setSpacing(15)
+        row_layout.setContentsMargins(15, 0, 15, 0)
 
         checkbox = QCheckBox()
         checkbox.setChecked(is_done == 1)
         checkbox.stateChanged.connect(lambda s, tid=task_id: (update_task_status(tid, int(s == 2)), self.refresh_tasks()))
 
-        # FIX: Removed TranslucentBackground and added Stretch
         t_lbl = QLabel(str(title))
-        t_lbl.setObjectName("taskTitle")
+        t_lbl.setObjectName("itemTitle")
         
-        info_lbl = QLabel(f"{task_time or ''}  {task_date}")
-        info_lbl.setObjectName("taskInfo")
+        try:
+            clean_date = datetime.strptime(task_date, '%Y-%m-%d').strftime('%b %d')
+        except:
+            clean_date = task_date
+
+        info_lbl = QLabel(f"{task_time or ''} • {clean_date}")
+        info_lbl.setObjectName("itemTime")
 
         row_layout.addWidget(checkbox)
-        row_layout.addWidget(t_lbl, 1) # '1' ensures the title fills the space
+        row_layout.addWidget(t_lbl, 1)
         row_layout.addWidget(info_lbl)
 
         row.mousePressEvent = lambda e, t=task: self.open_edit_page(*t)
         layout.addWidget(row)
 
-    def refresh_tasks(self):
+    def refresh_tasks(self): 
         self.load_task_rows(self.task_layout)
 
     def open_edit_page(self, task_id, title, task_date, task_time, created_at, is_done):
@@ -196,158 +221,385 @@ class HomePage(QWidget):
     def load_user_data(self):
         if os.path.exists(DATA_FILE):
             with open(DATA_FILE, "r") as f: return json.load(f)
-        return {"image": "Profile-Icon.png"}
+        return {"image": "Profile-Icon.png", "name": "User"}
 
     def set_profile_picture(self, filename):
         path = os.path.join(os.path.dirname(__file__), "..", "assets", filename)
         if os.path.exists(path):
-            pix = QPixmap(path).scaled(70, 70, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            canvas = QPixmap(70, 70)
+            pix = QPixmap(path).scaled(65, 65, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            canvas = QPixmap(65, 65)
             canvas.fill(Qt.transparent)
             painter = QPainter(canvas)
             painter.setRenderHint(QPainter.Antialiasing)
             p = QPainterPath()
-            p.addEllipse(0, 0, 70, 70)
+            p.addEllipse(0, 0, 65, 65)
             painter.setClipPath(p)
             painter.drawPixmap(0, 0, pix)
             painter.end()
             self.profile_button.setIcon(QIcon(canvas))
-            self.profile_button.setIconSize(QSize(70, 70))
-
-    def update_data(self, data):
-        self.set_profile_picture(data.get("image", ""))
+            self.profile_button.setIconSize(QSize(65, 65))
 
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
-    
+        scroll_style = """
+            QScrollArea#modernScroll { 
+                background: transparent; 
+                border: none; 
+            } 
+            QScrollBar:vertical { 
+                width: 6px; 
+                background: transparent; 
+                margin: 4px;
+            } 
+            QScrollBar::handle:vertical { 
+                background: rgba(148, 163, 184, 0.3); 
+                border-radius: 3px; 
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover { 
+                background: rgba(148, 163, 184, 0.5); 
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+        """
+        
         if enabled:
-            self.setStyleSheet("""
-            /* Global and Typography */
-            QWidget { 
-                background-color: #1e1e1e; 
-                font-family: Arial; 
-            }
-            QLabel#welcomeLabel { 
-                color: #e0e0e0; 
-                font-weight: bold; 
-                font-size: 22px; 
-            }
-            QLabel#sectionTitle { 
-                color: #e0e0e0; 
-                font-weight: bold; 
-                font-size: 20px; 
-            }
+            # Modern Dark Mode - Deep Blue/Purple theme
+            self.setStyleSheet(scroll_style + """
+                QWidget { 
+                    background-color: #0A0E27; 
+                    font-family: 'Inter', 'Segoe UI Variable', 'SF Pro Display', sans-serif; 
+                    color: #94A3B8; 
+                }
+                
+                QLabel#welcomeLabel { 
+                    font-size: 22px; 
+                    font-weight: 600; 
+                    color: #64748B; 
+                    letter-spacing: 0.5px; 
+                    background: transparent; 
+                }
+                
+                QLabel#nameLabel { 
+                    font-size: 48px; 
+                    font-weight: 800; 
+                    color: #8B5CF6;
+                    letter-spacing: -2px; 
+                    background: transparent;
+                    margin: 4px 0px;
+                }
+                
+                QLabel#subLabel { 
+                    color: #64748B; 
+                    font-size: 15px; 
+                    font-weight: 500;
+                    background: transparent; 
+                    margin-top: 2px;
+                }
+                
+                QPushButton#profileButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #8B5CF6, stop:1 #6366F1);
+                    border: 3px solid #1E293B;
+                    border-radius: 32px;
+                }
+                QPushButton#profileButton:hover {
+                    border: 3px solid #8B5CF6;
+                }
+                
+                QFrame#chatCard { 
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 rgba(139, 92, 246, 0.08), stop:1 rgba(30, 41, 59, 0.6));
+                    border-radius: 28px; 
+                    border: 1px solid rgba(139, 92, 246, 0.2);
+                }
+                
+                QFrame#taskCard { 
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 rgba(59, 130, 246, 0.08), stop:1 rgba(30, 41, 59, 0.6));
+                    border-radius: 28px; 
+                    border: 1px solid rgba(59, 130, 246, 0.2);
+                }
+                
+                QLabel#sectionTitleChat { 
+                    color: #A78BFA; 
+                    font-weight: 700; 
+                    font-size: 11px; 
+                    letter-spacing: 2.5px; 
+                    background: transparent; 
+                }
+                
+                QLabel#sectionTitleTask { 
+                    color: #60A5FA; 
+                    font-weight: 700; 
+                    font-size: 11px; 
+                    letter-spacing: 2.5px; 
+                    background: transparent; 
+                }
+                
+                QPushButton#circularAddBtnChat { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #8B5CF6, stop:1 #6366F1);
+                    color: white; 
+                    border-radius: 18px; 
+                    border: none; 
+                    font-size: 20px; 
+                    font-weight: bold; 
+                }
+                QPushButton#circularAddBtnChat:hover { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #7C3AED, stop:1 #4F46E5);
+                }
+                
+                QPushButton#circularAddBtnTask { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #3B82F6, stop:1 #2563EB);
+                    color: white; 
+                    border-radius: 18px; 
+                    border: none; 
+                    font-size: 20px; 
+                    font-weight: bold; 
+                }
+                QPushButton#circularAddBtnTask:hover { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #2563EB, stop:1 #1D4ED8);
+                }
+                
+                QPushButton#chatRow { 
+                    background: rgba(30, 41, 59, 0.4);
+                    border-radius: 16px; 
+                    border: 1px solid rgba(71, 85, 105, 0.3); 
+                    text-align: left; 
+                    padding: 12px; 
+                    color: #E2E8F0;
+                    font-weight: 600;
+                    font-size: 15px;
+                }
+                QPushButton#chatRow:hover { 
+                    background: rgba(139, 92, 246, 0.15);
+                    border: 1px solid rgba(139, 92, 246, 0.4);
+                }
+                
+                QWidget#taskRow { 
+                    background: rgba(30, 41, 59, 0.4);
+                    border-radius: 16px; 
+                    border: 1px solid rgba(71, 85, 105, 0.3); 
+                    padding: 12px; 
+                }
+                QWidget#taskRow:hover { 
+                    background: rgba(59, 130, 246, 0.15);
+                    border: 1px solid rgba(59, 130, 246, 0.4);
+                }
 
-            /* Buttons */
-            QPushButton#chatButton { 
-                background-color: #2d2d2d; 
-                color: #e0e0e0; 
-                padding: 10px; 
-                font-weight: bold; 
-                font-size: 15px; 
-                border-radius: 10px; 
-                border: none; 
-                text-align: left; 
-            }
-            QPushButton#chatButton:hover { 
-                background-color: #3a3a3a; 
-            }
-            QPushButton#smallButton { 
-                background-color: #4CAF50; 
-                color: white; 
-                padding: 8px 15px; 
-                border-radius: 6px; 
-                border: none; 
-            }
-
-            /* Task Row Items */
-            QWidget#taskRow { 
-                background-color: #2d2d2d; 
-                border-radius: 10px; 
-            }
-            QWidget#taskRow:hover { 
-                background-color: #3a3a3a; 
-            }
-            QLabel#taskTitle { 
-                color: #ffffff !important; 
-                font-weight: bold; 
-                font-size: 15px; 
-                background: transparent; 
-            }
-            QLabel#taskInfo { 
-                color: #cccccc !important; 
-                font-size: 13px; 
-                background: transparent; 
-            }
-
-            /* Dividers */
-            QFrame#divider { 
-                background-color: #444; 
-            }
+                QLabel#itemTitle { 
+                    font-weight: 600; 
+                    font-size: 15px; 
+                    color: #F1F5F9; 
+                    background: transparent; 
+                }
+                
+                QLabel#itemTime { 
+                    color: #E2E8F0; 
+                    font-size: 12px; 
+                    font-weight: 500;
+                    background: transparent; 
+                }
+                
+                QLabel#emptyMsg {
+                    color: #475569;
+                    font-size: 14px;
+                    font-weight: 500;
+                    background: transparent;
+                }
+                
+                QCheckBox::indicator { 
+                    width: 22px; 
+                    height: 22px; 
+                    border-radius: 7px; 
+                    border: 2.5px solid #475569; 
+                    background: rgba(15, 23, 42, 0.6); 
+                }
+                QCheckBox::indicator:hover { 
+                    border-color: #60A5FA; 
+                }
+                QCheckBox::indicator:checked { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #8B5CF6, stop:1 #6366F1);
+                    border-color: #8B5CF6; 
+                }
+                
+                QWidget#transparentBg { 
+                    background: transparent; 
+                }
             """)
         else:
-            self.setStyleSheet("""
-            /* Global and Typography */
-            QWidget { 
-                background-color: #f0f0f0; 
-                font-family: Arial; 
-            }
-            QLabel#welcomeLabel { 
-                color: black; 
-                font-weight: bold; 
-                font-size: 22px; 
-            }
-            QLabel#sectionTitle { 
-                color: black; 
-                font-weight: bold; 
-                font-size: 20px; 
-            }
+            # Modern Light Mode - Clean & Vibrant
+            self.setStyleSheet(scroll_style + """
+                QWidget { 
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #F8FAFC, stop:1 #EFF6FF);
+                    font-family: 'Inter', 'Segoe UI Variable', 'SF Pro Display', sans-serif; 
+                    color: #475569; 
+                }
+                
+                QLabel#welcomeLabel { 
+                    font-size: 22px; 
+                    font-weight: 600; 
+                    color: #64748B; 
+                    letter-spacing: 0.5px; 
+                    background: transparent; 
+                }
+                
+                QLabel#nameLabel { 
+                    font-size: 48px; 
+                    font-weight: 800; 
+                    color: #7C3AED;
+                    letter-spacing: -2px; 
+                    background: transparent;
+                    margin: 4px 0px;
+                }
+                
+                QLabel#subLabel { 
+                    color: #64748B; 
+                    font-size: 15px; 
+                    font-weight: 500;
+                    background: transparent; 
+                    margin-top: 2px;
+                }
+                
+                QPushButton#profileButton {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #8B5CF6, stop:1 #6366F1);
+                    border: 3px solid #FFFFFF;
+                    border-radius: 32px;
+                }
+                QPushButton#profileButton:hover {
+                    border: 3px solid #8B5CF6;
+                }
+                
+                QFrame#chatCard { 
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #FFFFFF, stop:1 rgba(245, 243, 255, 0.8));
+                    border-radius: 28px; 
+                    border: 2px solid rgba(139, 92, 246, 0.15);
+                }
+                
+                QFrame#taskCard { 
+                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                        stop:0 #FFFFFF, stop:1 rgba(239, 246, 255, 0.8));
+                    border-radius: 28px; 
+                    border: 2px solid rgba(59, 130, 246, 0.15);
+                }
+                
+                QLabel#sectionTitleChat { 
+                    color: #7C3AED; 
+                    font-weight: 700; 
+                    font-size: 11px; 
+                    letter-spacing: 2.5px; 
+                    background: transparent; 
+                }
+                
+                QLabel#sectionTitleTask { 
+                    color: #2563EB; 
+                    font-weight: 700; 
+                    font-size: 11px; 
+                    letter-spacing: 2.5px; 
+                    background: transparent; 
+                }
+                
+                QPushButton#circularAddBtnChat { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #8B5CF6, stop:1 #6366F1);
+                    color: white; 
+                    border-radius: 18px; 
+                    border: none; 
+                    font-size: 20px; 
+                    font-weight: bold; 
+                }
+                QPushButton#circularAddBtnChat:hover { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #7C3AED, stop:1 #4F46E5);
+                }
+                
+                QPushButton#circularAddBtnTask { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #3B82F6, stop:1 #2563EB);
+                    color: white; 
+                    border-radius: 18px; 
+                    border: none; 
+                    font-size: 20px; 
+                    font-weight: bold; 
+                }
+                QPushButton#circularAddBtnTask:hover { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #2563EB, stop:1 #1D4ED8);
+                }
+                
+                QPushButton#chatRow { 
+                    background: rgba(255, 255, 255, 0.8);
+                    border-radius: 16px; 
+                    border: 1.5px solid rgba(226, 232, 240, 0.8); 
+                    text-align: left; 
+                    padding: 12px; 
+                    color: #1E293B;
+                    font-weight: 600;
+                    font-size: 15px;
+                }
+                QPushButton#chatRow:hover { 
+                    background: rgba(245, 243, 255, 0.9);
+                    border: 1.5px solid rgba(139, 92, 246, 0.3);
+                }
+                
+                QWidget#taskRow { 
+                    background: rgba(255, 255, 255, 0.8);
+                    border-radius: 16px; 
+                    border: 1.5px solid rgba(226, 232, 240, 0.8); 
+                    padding: 12px; 
+                }
+                QWidget#taskRow:hover { 
+                    background: rgba(239, 246, 255, 0.9);
+                    border: 1.5px solid rgba(59, 130, 246, 0.3);
+                }
 
-            /* Buttons */
-            QPushButton#chatButton { 
-                background-color: white; 
-                color: black; 
-                padding: 10px;
-                font-weight: bold; 
-                font-size: 15px; 
-                border-radius: 10px; 
-                border: none; 
-                text-align: left; 
-            }
-            QPushButton#chatButton:hover { 
-                background-color: #e0e0e0; 
-            }
-            QPushButton#smallButton { 
-                background-color: black; 
-                color: white; 
-                padding: 8px 15px; 
-                border-radius: 6px; 
-                border: none; 
-                font-weight: bold; 
-            }
-
-            /* Task Row Items (Light Mode) */
-            QWidget#taskRow { 
-                background-color: white; 
-                border-radius: 10px; 
-            }
-            QWidget#taskRow:hover { 
-                background-color: #e0e0e0; 
-            }
-            QLabel#taskTitle { 
-                color: black !important; 
-                font-weight: bold; 
-                font-size: 15px; 
-                background: transparent; 
-            }
-            QLabel#taskInfo { 
-                color: #444444 !important; 
-                font-size: 13px; 
-                background: transparent; 
-            }
-
-            /* Dividers */
-            QFrame#divider { 
-                background-color: black; 
-            }
-        """)
+                QLabel#itemTitle { 
+                    font-weight: 600; 
+                    font-size: 15px; 
+                    color: #0F172A; 
+                    background: transparent; 
+                }
+                
+                QLabel#itemTime { 
+                    color: #1E293B; 
+                    font-size: 12px; 
+                    font-weight: 600;
+                    background: transparent; 
+                }
+                
+                QLabel#emptyMsg {
+                    color: #94A3B8;
+                    font-size: 14px;
+                    font-weight: 500;
+                    background: transparent;
+                }
+                
+                QCheckBox::indicator { 
+                    width: 22px; 
+                    height: 22px; 
+                    border-radius: 7px; 
+                    border: 2.5px solid #CBD5E1; 
+                    background: white; 
+                }
+                QCheckBox::indicator:hover { 
+                    border-color: #8B5CF6; 
+                }
+                QCheckBox::indicator:checked { 
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                        stop:0 #8B5CF6, stop:1 #6366F1);
+                    border-color: #8B5CF6; 
+                }
+                
+                QWidget#transparentBg { 
+                    background: transparent; 
+                }
+            """)
