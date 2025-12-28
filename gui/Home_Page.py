@@ -7,7 +7,7 @@ from PySide6.QtCore import QSize, Qt
 import json
 import os
 from datetime import datetime
-
+from PySide6.QtCore import Signal
 from db.todo_db_helper import get_all_tasks, update_task_status
 from gui.edit_task_page import EditTaskPage
 from db import get_all_sessions
@@ -15,6 +15,7 @@ from db import get_all_sessions
 DATA_FILE = "user_data.json"
 
 class HomePage(QWidget):
+    task_status_changed = Signal()
     def __init__(self, go_to_settings, go_to_tasks, go_to_chatbot, open_chat_session):
         super().__init__()
         self.go_to_settings = go_to_settings
@@ -190,8 +191,11 @@ class HomePage(QWidget):
 
         checkbox = QCheckBox()
         checkbox.setChecked(is_done == 1)
-        checkbox.stateChanged.connect(lambda s, tid=task_id: (update_task_status(tid, int(s == 2)), self.refresh_tasks()))
-
+        checkbox.stateChanged.connect(lambda s, tid=task_id: (
+            update_task_status(tid, int(s == 2)), 
+            self.refresh_tasks(),
+            self.task_status_changed.emit()
+        ))
         t_lbl = QLabel(str(title))
         t_lbl.setObjectName("itemTitle")
         
