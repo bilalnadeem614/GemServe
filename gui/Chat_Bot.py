@@ -205,11 +205,6 @@ class ChatWindow(QWidget):
         h_layout.addWidget(self.title)
         h_layout.addStretch()
         
-        # Empty widget for balance
-        spacer = QWidget()
-        spacer.setFixedSize(40, 40)
-        h_layout.addWidget(spacer)
-        
         root.addWidget(self.header)
 
         # ---------------- CHAT AREA ----------------
@@ -596,7 +591,7 @@ class ChatWindow(QWidget):
         self.add_message(text, True, save_to_db=True)
         self.input.clear()
 
-        self.add_message("🤔 Thinking...", False, save_to_db=False)
+        self.add_message("Thinking...", False, save_to_db=False)
 
         self.llm_worker = LLMWorker(self.current_session_id, text)
         self.llm_worker.finished.connect(self.on_llm_response)

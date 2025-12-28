@@ -33,6 +33,7 @@ class App(QStackedWidget):
         self.todo_page = TodoList(self.go_back_home_and_refresh)
         self.chatbot_page = ChatWindow(self.go_home, self.refresh_home)
 
+        self.home_page.task_status_changed.connect(self.todo_page.refresh_page)
         # Add pages
         self.addWidget(self.home_page)
         self.addWidget(self.settings_page)

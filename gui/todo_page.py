@@ -232,7 +232,7 @@ class TodoList(QWidget):
                 }
                 
                 QLabel#completedTitle {
-                    color: #34D399;
+                    color: #8B5CF6;
                     font-size: 11px;
                     font-weight: 800;
                     letter-spacing: 2px;
@@ -306,10 +306,10 @@ class TodoList(QWidget):
                 QCheckBox::indicator:hover {
                     border-color: #8B5CF6;
                 }
-                QCheckBox::indicator:checked {
+               QCheckBox::indicator:checked { 
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #34D399, stop:1 #10B981);
-                    border-color: #34D399;
+                    stop:0 #8B5CF6, stop:1 #6366F1);
+                    border-color: #8B5CF6; 
                 }
                 
                 /* Delete Button */
@@ -389,7 +389,7 @@ class TodoList(QWidget):
                 }
                 
                 QLabel#completedTitle {
-                    color: #059669;
+                    color: #8B5CF6;
                     font-size: 11px;
                     font-weight: 800;
                     letter-spacing: 2px;
@@ -463,10 +463,10 @@ class TodoList(QWidget):
                 QCheckBox::indicator:hover {
                     border-color: #8B5CF6;
                 }
-                QCheckBox::indicator:checked {
+                QCheckBox::indicator:checked { 
                     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                        stop:0 #34D399, stop:1 #10B981);
-                    border-color: #34D399;
+                    stop:0 #8B5CF6, stop:1 #6366F1);
+                    border-color: #8B5CF6; 
                 }
                 
                 /* Delete Button */
@@ -497,6 +497,10 @@ class TodoList(QWidget):
         insert_task(title, task_date, task_time)
         self.task_updated.emit()
         self.task_input.clear()
+        self.load_tasks()
+
+    def refresh_page(self):
+        """Refresh the todo list"""
         self.load_tasks()
 
     def load_tasks(self):
