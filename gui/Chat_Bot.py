@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMessageBox,
 )
+from PySide6.QtWidgets import QComboBox
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QIcon
 import shutil
@@ -31,7 +32,7 @@ from db.vector_store import add_document_chunks
 from services import get_chat_response, process_file
 from utils.config import UPLOAD_DIR
 from utils.helpers import sanitize_filename
-
+from gui.Chat_Bot_styles import get_chat_styles
 
 # ---------------------- MESSAGE BUBBLE -------------------------
 class MessageBubble(QFrame):
@@ -205,10 +206,6 @@ class ChatWindow(QWidget):
         h_layout.addWidget(self.title)
         h_layout.addStretch()
         
-        # Empty widget for balance
-        spacer = QWidget()
-        spacer.setFixedSize(40, 40)
-        h_layout.addWidget(spacer)
         
         root.addWidget(self.header)
 
@@ -279,15 +276,26 @@ class ChatWindow(QWidget):
         self.mic_btn.setCursor(Qt.PointingHandCursor)
         self.mic_btn.clicked.connect(self.on_mic_click)
 
+        self.mode_combo = QComboBox(self.wrapper)
+        self.mode_combo.setObjectName("modeCombo")
+        self.mode_combo.addItem("⚡ Fast")
+        self.mode_combo.addItem("🧠 Thinking")
+        self.mode_combo.addItem("📁 File Operation")
+        self.mode_combo.setFixedSize(150, 36)
+        self.mode_combo.setGeometry(50, 9, 150, 36)
+        self.mode_combo.setCursor(Qt.PointingHandCursor)
+
         self.file_btn = QPushButton("📎", self.wrapper)
         self.file_btn.setObjectName("iconButton")
         self.file_btn.setFixedSize(36, 36)
         self.file_btn.setCursor(Qt.PointingHandCursor)
         self.file_btn.clicked.connect(self.on_file_upload)
 
-        self.wrapper.resizeEvent = lambda e: self.file_btn.setGeometry(
-            self.wrapper.width() - 45, 9, 36, 36
-        )
+        def on_wrapper_resize(e):
+            self.mode_combo.setGeometry(self.wrapper.width() - 210, 9, 150, 36)
+            self.file_btn.setGeometry(self.wrapper.width() - 45, 9, 36, 36)
+        
+        self.wrapper.resizeEvent = on_wrapper_resize
 
         self.send_btn = QPushButton("Send")
         self.send_btn.setObjectName("sendButton")
@@ -347,290 +355,8 @@ class ChatWindow(QWidget):
     # -----------------------------------------
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
+        self.setStyleSheet(get_chat_styles(enabled))
         
-        scroll_style = """
-            QScrollArea#chatArea {
-                border: none;
-            }
-            QScrollBar:vertical {
-                width: 8px;
-                background: transparent;
-                margin: 4px;
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(139, 92, 246, 0.3);
-                border-radius: 4px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: rgba(139, 92, 246, 0.5);
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """
-        
-        if enabled:
-            self.setStyleSheet(scroll_style + """
-                /* Main Background */
-                QWidget {
-                    background-color: #0A0E27;
-                    font-family: 'Inter', 'Segoe UI Variable', sans-serif;
-                }
-                
-                /* Header */
-                QFrame#header {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #6366F1, stop:0.5 #8B5CF6, stop:1 #6366F1);
-                    border: none;
-                }
-                
-                QPushButton#backButton {
-                    background: rgba(255, 255, 255, 0.15);
-                    color: #FFFFFF;
-                    border: none;
-                    border-radius: 20px;
-                    font-size: 20px;
-                    font-weight: bold;
-                }
-                QPushButton#backButton:hover {
-                    background: rgba(255, 255, 255, 0.25);
-                }
-                
-                QLabel#headerTitle {
-                    color: #FFFFFF;
-                    font-size: 22px;
-                    font-weight: 800;
-                    letter-spacing: -0.5px;
-                    background: transparent;
-                }
-                
-                /* Files Container */
-                QFrame#filesContainer {
-                    background: rgba(139, 92, 246, 0.08);
-                    border: 2px solid rgba(139, 92, 246, 0.2);
-                    border-radius: 12px;
-                }
-                
-                QLabel#filesTitle {
-                    color: #A78BFA;
-                    font-size: 13px;
-                    font-weight: 700;
-                    background: transparent;
-                }
-                
-                QLabel#fileBadge {
-                    background: rgba(30, 41, 59, 0.6);
-                    color: #C4B5FD;
-                    border: 1.5px solid rgba(139, 92, 246, 0.3);
-                    border-radius: 8px;
-                    padding: 6px 12px;
-                    font-size: 13px;
-                    font-weight: 600;
-                }
-                
-                /* Chat Area */
-                QWidget#chatContainer {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #0F172A, stop:1 #0A0E27);
-                }
-                
-                /* Input Frame */
-                QFrame#inputFrame {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #0F172A, stop:1 #0A0E27);
-                    border-top: 2px solid rgba(139, 92, 246, 0.2);
-                }
-                
-                /* Input Wrapper with Perfect Border Radius */
-                QFrame#inputWrapper {
-                    background: rgba(30, 41, 59, 0.6);
-                    border: 2.5px solid rgba(139, 92, 246, 0.25);
-                    border-radius: 27px;
-                }
-                
-                /* Message Input */
-                QLineEdit#messageInput {
-                    border: none;
-                    background: transparent;
-                    color: #E2E8F0;
-                    font-size: 16px;
-                    font-weight: 500;
-                }
-                
-                QLineEdit#messageInput:focus {
-                    border: none;
-                }
-                
-                QLineEdit#messageInput::placeholder {
-                    color: #64748B;
-                    font-style: italic;
-                }
-                
-                /* Icon Buttons */
-                QPushButton#iconButton {
-                    background: rgba(139, 92, 246, 0.15);
-                    border: none;
-                    border-radius: 18px;
-                    font-size: 18px;
-                }
-                
-                QPushButton#iconButton:hover {
-                    background: rgba(139, 92, 246, 0.3);
-                }
-                
-                /* Send Button with Perfect Border Radius */
-                QPushButton#sendButton {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #6366F1, stop:0.5 #8B5CF6, stop:1 #A78BFA);
-                    color: #FFFFFF;
-                    font-weight: 800;
-                    font-size: 16px;
-                    border: none;
-                    border-radius: 27px;
-                }
-                
-                QPushButton#sendButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #4F46E5, stop:0.5 #7C3AED, stop:1 #8B5CF6);
-                }
-                
-                QPushButton#sendButton:disabled {
-                    background: rgba(71, 85, 105, 0.4);
-                    color: #64748B;
-                }
-            """)
-        else:
-            self.setStyleSheet(scroll_style + """
-                /* Main Background */
-                QWidget {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #F8FAFC, stop:1 #EFF6FF);
-                    font-family: 'Inter', 'Segoe UI Variable', sans-serif;
-                }
-                
-                /* Header */
-                QFrame#header {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #6366F1, stop:0.5 #8B5CF6, stop:1 #6366F1);
-                    border: none;
-                }
-                
-                QPushButton#backButton {
-                    background: rgba(255, 255, 255, 0.2);
-                    color: #FFFFFF;
-                    border: none;
-                    border-radius: 20px;
-                    font-size: 20px;
-                    font-weight: bold;
-                }
-                QPushButton#backButton:hover {
-                    background: rgba(255, 255, 255, 0.35);
-                }
-                
-                QLabel#headerTitle {
-                    color: #FFFFFF;
-                    font-size: 22px;
-                    font-weight: 800;
-                    letter-spacing: -0.5px;
-                    background: transparent;
-                }
-                
-                /* Files Container */
-                QFrame#filesContainer {
-                    background: rgba(245, 243, 255, 0.8);
-                    border: 2px solid rgba(139, 92, 246, 0.15);
-                    border-radius: 12px;
-                }
-                
-                QLabel#filesTitle {
-                    color: #7C3AED;
-                    font-size: 13px;
-                    font-weight: 700;
-                    background: transparent;
-                }
-                
-                QLabel#fileBadge {
-                    background: #FFFFFF;
-                    color: #7C3AED;
-                    border: 1.5px solid rgba(139, 92, 246, 0.25);
-                    border-radius: 8px;
-                    padding: 6px 12px;
-                    font-size: 13px;
-                    font-weight: 600;
-                }
-                
-                /* Chat Area */
-                QWidget#chatContainer {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #F8FAFC, stop:1 #EFF6FF);
-                }
-                
-                /* Input Frame */
-                QFrame#inputFrame {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #FFFFFF, stop:1 #F8FAFC);
-                    border-top: 2px solid rgba(139, 92, 246, 0.15);
-                }
-                
-                /* Input Wrapper with Perfect Border Radius */
-                QFrame#inputWrapper {
-                    background: #FFFFFF;
-                    border: 2.5px solid rgba(226, 232, 240, 0.8);
-                    border-radius: 27px;
-                }
-                
-                /* Message Input */
-                QLineEdit#messageInput {
-                    border: none;
-                    background: transparent;
-                    color: #0F172A;
-                    font-size: 16px;
-                    font-weight: 500;
-                }
-                
-                QLineEdit#messageInput:focus {
-                    border: none;
-                }
-                
-                QLineEdit#messageInput::placeholder {
-                    color: #94A3B8;
-                    font-style: italic;
-                }
-                
-                /* Icon Buttons */
-                QPushButton#iconButton {
-                    background: rgba(139, 92, 246, 0.08);
-                    border: none;
-                    border-radius: 18px;
-                    font-size: 18px;
-                }
-                
-                QPushButton#iconButton:hover {
-                    background: rgba(139, 92, 246, 0.15);
-                }
-                
-                /* Send Button with Perfect Border Radius */
-                QPushButton#sendButton {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #6366F1, stop:0.5 #8B5CF6, stop:1 #A78BFA);
-                    color: #FFFFFF;
-                    font-weight: 800;
-                    font-size: 16px;
-                    border: none;
-                    border-radius: 27px;
-                }
-                
-                QPushButton#sendButton:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                        stop:0 #4F46E5, stop:0.5 #7C3AED, stop:1 #8B5CF6);
-                }
-                
-                QPushButton#sendButton:disabled {
-                    background: #E2E8F0;
-                    color: #94A3B8;
-                }
-            """)
 
     # ---------------- MESSAGE FUNCTIONS ----------------
     def add_message(self, text, is_user, save_to_db=True):
@@ -813,7 +539,17 @@ class ChatWindow(QWidget):
         self.home_page_refresh()
         self.go_home()
 
-
+    def get_selected_mode(self):
+        """Get current selected mode"""
+        mode_text = self.mode_combo.currentText()
+        if "Fast" in mode_text:
+            return "fast"
+        elif "Thinking" in mode_text:
+            return "thinking"
+        elif "File Operation" in mode_text:
+            return "file_operation"
+        return "fast"
+    
 # ---------------- MAIN (Not used in main app) ----------------
 def main():
     app = QApplication(sys.argv)
