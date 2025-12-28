@@ -14,10 +14,13 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ==================== LLM SETTINGS ====================
 OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "gemma3n:e2b"
+OLLAMA_MODEL = "gemma3:270m"  # Main chat model - change to "gemma3n:e2b" if you prefer
+
+# ==================== EMBEDDING SETTINGS ====================
+EMBEDDING_MODEL = "embeddinggemma:latest"  # For document embeddings
 
 # ==================== CONTEXT WINDOW SETTINGS ====================
-# Token limits for Gemma 3n:2b (32k total context)
+# Token limits for Gemma models (32k total context)
 MAX_TOTAL_TOKENS = 32000
 SYSTEM_PROMPT_TOKENS = 500
 USER_PREFS_TOKENS = 200

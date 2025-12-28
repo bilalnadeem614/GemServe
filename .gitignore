@@ -20,3 +20,4 @@ user_data.json
 user_notes.json
 assets/*
 *.db
+*/*.db

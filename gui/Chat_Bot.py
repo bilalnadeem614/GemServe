@@ -205,7 +205,32 @@ class ChatWindow(QWidget):
         h_layout.addWidget(self.title)
         h_layout.addStretch()
         
+        # Empty widget for balance
+        spacer = QWidget()
+        spacer.setFixedSize(40, 40)
+        h_layout.addWidget(spacer)
+        
         root.addWidget(self.header)
+
+        # ============= UPLOADED FILES SECTION (NEW) =============
+        self.files_container = QFrame()
+        self.files_container.setObjectName("filesContainer")
+        self.files_container.setVisible(False)  # Hidden by default
+        
+        files_layout = QVBoxLayout(self.files_container)
+        files_layout.setContentsMargins(20, 10, 20, 10)
+        files_layout.setSpacing(8)
+        
+        files_title = QLabel("📎 Uploaded Files:")
+        files_title.setObjectName("filesTitle")
+        files_layout.addWidget(files_title)
+        
+        self.files_list_layout = QVBoxLayout()
+        self.files_list_layout.setSpacing(6)
+        files_layout.addLayout(self.files_list_layout)
+        
+        root.addWidget(self.files_container)
+        # ========================================================
 
         # ---------------- CHAT AREA ----------------
         self.chat_area = QScrollArea()
@@ -284,6 +309,8 @@ class ChatWindow(QWidget):
         self.is_new_session = True
         self.title.setText("New Chat")
         self.clear_chat()
+        # Hide files container for new session
+        self.files_container.setVisible(False)
         print("✅ Ready for new session")
 
     def load_session(self, session_id):
@@ -302,6 +329,9 @@ class ChatWindow(QWidget):
             first_message = messages[0][1]
             title = first_message[:30] + "..." if len(first_message) > 30 else first_message
             self.title.setText(title)
+        
+        # NEW: Load uploaded files UI
+        self.load_uploaded_files_ui()
 
         print(f"✅ Loaded session {session_id}")
 
@@ -373,6 +403,30 @@ class ChatWindow(QWidget):
                     font-weight: 800;
                     letter-spacing: -0.5px;
                     background: transparent;
+                }
+                
+                /* Files Container */
+                QFrame#filesContainer {
+                    background: rgba(139, 92, 246, 0.08);
+                    border: 2px solid rgba(139, 92, 246, 0.2);
+                    border-radius: 12px;
+                }
+                
+                QLabel#filesTitle {
+                    color: #A78BFA;
+                    font-size: 13px;
+                    font-weight: 700;
+                    background: transparent;
+                }
+                
+                QLabel#fileBadge {
+                    background: rgba(30, 41, 59, 0.6);
+                    color: #C4B5FD;
+                    border: 1.5px solid rgba(139, 92, 246, 0.3);
+                    border-radius: 8px;
+                    padding: 6px 12px;
+                    font-size: 13px;
+                    font-weight: 600;
                 }
                 
                 /* Chat Area */
@@ -480,6 +534,30 @@ class ChatWindow(QWidget):
                     font-weight: 800;
                     letter-spacing: -0.5px;
                     background: transparent;
+                }
+                
+                /* Files Container */
+                QFrame#filesContainer {
+                    background: rgba(245, 243, 255, 0.8);
+                    border: 2px solid rgba(139, 92, 246, 0.15);
+                    border-radius: 12px;
+                }
+                
+                QLabel#filesTitle {
+                    color: #7C3AED;
+                    font-size: 13px;
+                    font-weight: 700;
+                    background: transparent;
+                }
+                
+                QLabel#fileBadge {
+                    background: #FFFFFF;
+                    color: #7C3AED;
+                    border: 1.5px solid rgba(139, 92, 246, 0.25);
+                    border-radius: 8px;
+                    padding: 6px 12px;
+                    font-size: 13px;
+                    font-weight: 600;
                 }
                 
                 /* Chat Area */
@@ -643,7 +721,9 @@ class ChatWindow(QWidget):
             return
 
         filename = os.path.basename(file_path)
-        self.add_message(f"📎Uploading: {filename}...", True, save_to_db=False)
+        
+        # Show processing message
+        self.add_message(f"📎 Uploading: {filename}...", False, save_to_db=False)
 
         try:
             safe_filename = sanitize_filename(filename)
@@ -658,17 +738,37 @@ class ChatWindow(QWidget):
                 self.current_session_id, filename, dest_path, file_type
             )
 
+            # Process file
             chunks = process_file(dest_path, file_type)
 
             if chunks:
-                add_document_chunks(self.current_session_id, file_id, filename, chunks)
-                mark_file_processed(file_id)
-
-                self.add_message(
-                    f"✅ File uploaded successfully!\n{filename} ({len(chunks)} chunks)",
-                    False,
-                    save_to_db=False,
+                # Add to ChromaDB with embeddings
+                success = add_document_chunks(
+                    self.current_session_id, file_id, filename, chunks
                 )
+                
+                if success:
+                    mark_file_processed(file_id)
+                    
+                    # Add file to UI display
+                    self.add_file_to_ui(filename)
+                    
+                    # Remove "uploading" message
+                    last_item = self.chat_layout.itemAt(self.chat_layout.count() - 2)
+                    if last_item and last_item.widget():
+                        last_item.widget().deleteLater()
+                    
+                    self.add_message(
+                        f"✅ File uploaded successfully!\n{filename} is ready for questions ({len(chunks)} chunks processed)",
+                        False,
+                        save_to_db=False,
+                    )
+                else:
+                    self.add_message(
+                        f"❌ Failed to process embeddings for {filename}",
+                        False,
+                        save_to_db=False,
+                    )
             else:
                 self.add_message(
                     f"⚠️ Could not extract text from {filename}",
@@ -679,6 +779,35 @@ class ChatWindow(QWidget):
         except Exception as e:
             self.add_message(f"❌ Upload failed: {str(e)}", False, save_to_db=False)
             print(f"File upload error: {e}")
+
+    def add_file_to_ui(self, filename):
+        """Add file badge to the files container"""
+        file_badge = QLabel(f"📄 {filename}")
+        file_badge.setObjectName("fileBadge")
+        file_badge.setFixedHeight(32)
+        self.files_list_layout.addWidget(file_badge)
+        
+        # Show files container
+        self.files_container.setVisible(True)
+    
+    def load_uploaded_files_ui(self):
+        """Load uploaded files for current session into UI"""
+        if not self.current_session_id:
+            return
+        
+        # Clear existing file badges
+        while self.files_list_layout.count():
+            item = self.files_list_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        # Get files from database
+        files = get_session_files(self.current_session_id)
+        
+        if files:
+            for file_id, filename, upload_date, is_processed in files:
+                if is_processed:  # Only show processed files
+                    self.add_file_to_ui(filename)
 
     def on_back(self):
         self.home_page_refresh()
