@@ -157,14 +157,15 @@ class LLMWorker(QThread):
     finished = Signal(str)
     error = Signal(str)
 
-    def __init__(self, session_id, user_query):
+    def __init__(self, session_id, user_query, mode="fast"):
         super().__init__()
         self.session_id = session_id
         self.user_query = user_query
+        self.mode = mode
 
     def run(self):
         try:
-            response = get_chat_response(self.session_id, self.user_query)
+            response = get_chat_response(self.session_id, self.user_query, mode=self.mode)
             # Clean response - remove extra whitespace and newlines
             cleaned_response = response.strip()
             self.finished.emit(cleaned_response)
@@ -769,7 +770,9 @@ class ChatWindow(QWidget):
         # NORMAL CHAT MODE
         self.add_message("Thinking...", False, save_to_db=False)
 
-        self.llm_worker = LLMWorker(self.current_session_id, text)
+        # Get the current mode (fast or thinking)
+        mode = self.get_selected_mode()
+        self.llm_worker = LLMWorker(self.current_session_id, text, mode=mode)
         self.llm_worker.finished.connect(self.on_llm_response)
         self.llm_worker.error.connect(self.on_llm_error)
         self.llm_worker.start()

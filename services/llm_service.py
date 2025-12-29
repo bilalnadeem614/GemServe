@@ -1,16 +1,22 @@
 # services/llm_service.py
 import requests
 import json
-from utils.config import OLLAMA_BASE_URL, OLLAMA_MODEL
+from utils.config import OLLAMA_BASE_URL, OLLAMA_MODEL, MODEL_CONFIG, DEFAULT_MODE
 
-def ask_ollama(prompt):
+def ask_ollama(prompt, mode="fast"):
     """
     Send prompt to Ollama and get response
+    Args:
+        prompt: The prompt to send to the model
+        mode: "fast" (gemma3:270m) or "thinking" (gemma3n:e2b)
     """
     url = f"{OLLAMA_BASE_URL}/api/generate"
     
+    # Get model name based on mode
+    model_name = MODEL_CONFIG.get(mode, {}).get("model", OLLAMA_MODEL)
+    
     data = {
-        "model": OLLAMA_MODEL,
+        "model": model_name,
         "prompt": prompt,
         "stream": False
     }

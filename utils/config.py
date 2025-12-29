@@ -14,7 +14,20 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ==================== LLM SETTINGS ====================
 OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "gemma3:270m"  # Main chat model - change to "gemma3n:e2b" if you prefer
+OLLAMA_MODEL = "gemma3:270m"  # Default model (for backward compatibility)
+
+# Model configuration for different modes
+MODEL_CONFIG = {
+    "fast": {
+        "model": "gemma3:270m",
+        "description": "Fast responses - optimized for quick answers",
+    },
+    "thinking": {
+        "model": "gemma3n:e2b",
+        "description": "Thinking mode - optimized for detailed analysis",
+    }
+}
+DEFAULT_MODE = "fast"
 
 # ==================== EMBEDDING SETTINGS ====================
 EMBEDDING_MODEL = "embeddinggemma:latest"  # For document embeddings
@@ -26,13 +39,23 @@ SYSTEM_PROMPT_TOKENS = 500
 USER_PREFS_TOKENS = 200
 RESERVED_RESPONSE_TOKENS = 8000
 
-# Context limits without files
-MAX_HISTORY_MESSAGES_NO_FILES = 30
-MAX_HISTORY_TOKENS_NO_FILES = 8000
+# Fast Mode: Less context window
+FAST_MODE_HISTORY_MESSAGES_NO_FILES = 20
+FAST_MODE_HISTORY_TOKENS_NO_FILES = 5000
+FAST_MODE_HISTORY_MESSAGES_WITH_FILES = 10
+FAST_MODE_HISTORY_TOKENS_WITH_FILES = 3000
 
-# Context limits with files (RAG enabled)
-MAX_HISTORY_MESSAGES_WITH_FILES = 15
-MAX_HISTORY_TOKENS_WITH_FILES = 4000
+# Thinking Mode: More context window
+THINKING_MODE_HISTORY_MESSAGES_NO_FILES = 30
+THINKING_MODE_HISTORY_TOKENS_NO_FILES = 10000
+THINKING_MODE_HISTORY_MESSAGES_WITH_FILES = 20
+THINKING_MODE_HISTORY_TOKENS_WITH_FILES = 6000
+
+# Default context limits (backward compatibility)
+MAX_HISTORY_MESSAGES_NO_FILES = FAST_MODE_HISTORY_MESSAGES_NO_FILES
+MAX_HISTORY_TOKENS_NO_FILES = FAST_MODE_HISTORY_TOKENS_NO_FILES
+MAX_HISTORY_MESSAGES_WITH_FILES = FAST_MODE_HISTORY_MESSAGES_WITH_FILES
+MAX_HISTORY_TOKENS_WITH_FILES = FAST_MODE_HISTORY_TOKENS_WITH_FILES
 MAX_RAG_CHUNKS = 8
 MAX_CHUNK_TOKENS = 1800  # ~15k / 8 chunks
 

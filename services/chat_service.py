@@ -9,16 +9,25 @@ from utils.config import (
     SYSTEM_PROMPT,
     MAX_HISTORY_MESSAGES_NO_FILES,
     MAX_HISTORY_MESSAGES_WITH_FILES,
-    MAX_RAG_CHUNKS
+    MAX_RAG_CHUNKS,
+    FAST_MODE_HISTORY_MESSAGES_NO_FILES,
+    FAST_MODE_HISTORY_MESSAGES_WITH_FILES,
+    THINKING_MODE_HISTORY_MESSAGES_NO_FILES,
+    THINKING_MODE_HISTORY_MESSAGES_WITH_FILES,
+    DEFAULT_MODE
 )
 from utils.helpers import estimate_tokens
 import json
 import os
 
-def build_context_prompt(session_id, user_query):
+def build_context_prompt(session_id, user_query, mode="fast"):
     """
     Build complete context prompt for LLM
     Includes: system prompt + user prefs + chat history + RAG context + current query
+    Args:
+        session_id: Chat session ID
+        user_query: User's current query
+        mode: "fast" (less context) or "thinking" (more context)
     """
     prompt_parts = []
     
@@ -49,8 +58,13 @@ def build_context_prompt(session_id, user_query):
     # 3. Check if session has files
     has_files = check_session_has_files(session_id)
     
-    # 4. Chat History (limited based on file presence)
-    history_limit = MAX_HISTORY_MESSAGES_WITH_FILES if has_files else MAX_HISTORY_MESSAGES_NO_FILES
+    # 4. Chat History (limited based on file presence and mode)
+    # Get appropriate history limits based on mode
+    if mode == "thinking":
+        history_limit = THINKING_MODE_HISTORY_MESSAGES_WITH_FILES if has_files else THINKING_MODE_HISTORY_MESSAGES_NO_FILES
+    else:  # fast mode or default
+        history_limit = FAST_MODE_HISTORY_MESSAGES_NO_FILES if not has_files else FAST_MODE_HISTORY_MESSAGES_WITH_FILES
+    
     history = get_session_messages(session_id, limit=history_limit)
     
     if history:
@@ -82,14 +96,18 @@ def build_context_prompt(session_id, user_query):
     
     return final_prompt
 
-def get_chat_response(session_id, user_query):
+def get_chat_response(session_id, user_query, mode="fast"):
     """
     Main function to get LLM response with full context
+    Args:
+        session_id: Chat session ID
+        user_query: User's current query
+        mode: "fast" (gemma3:270m) or "thinking" (gemma3n:e2b)
     """
     # Build context-aware prompt
-    prompt = build_context_prompt(session_id, user_query)
+    prompt = build_context_prompt(session_id, user_query, mode=mode)
     
-    # Get response from LLM
-    response = ask_ollama(prompt)
+    # Get response from LLM with selected model
+    response = ask_ollama(prompt, mode=mode)
     
     return response
