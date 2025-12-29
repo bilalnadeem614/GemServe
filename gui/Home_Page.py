@@ -59,7 +59,7 @@ class HomePage(QWidget):
 
         self.profile_button = QPushButton()
         self.profile_button.setObjectName("profileButton")
-        self.profile_button.setFixedSize(65, 65)
+        self.profile_button.setFixedSize(85, 85)
         self.profile_button.setCursor(Qt.PointingHandCursor)
         
         self.set_profile_picture(user_data.get("image", ""))
@@ -230,18 +230,18 @@ class HomePage(QWidget):
     def set_profile_picture(self, filename):
         path = os.path.join(os.path.dirname(__file__), "..", "assets", filename)
         if os.path.exists(path):
-            pix = QPixmap(path).scaled(65, 65, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            canvas = QPixmap(65, 65)
+            pix = QPixmap(path).scaled(85, 85, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+            canvas = QPixmap(85, 85)
             canvas.fill(Qt.transparent)
             painter = QPainter(canvas)
             painter.setRenderHint(QPainter.Antialiasing)
             p = QPainterPath()
-            p.addEllipse(0, 0, 65, 65)
+            p.addEllipse(0, 0, 85, 85)
             painter.setClipPath(p)
             painter.drawPixmap(0, 0, pix)
             painter.end()
             self.profile_button.setIcon(QIcon(canvas))
-            self.profile_button.setIconSize(QSize(65, 65))
+            self.profile_button.setIconSize(QSize(85, 85))
 
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
