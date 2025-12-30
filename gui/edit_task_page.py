@@ -74,6 +74,7 @@ class EditTaskPage(QWidget):
         self.date_input.setObjectName("inputField")
         self.date_input.setCalendarPopup(True)
         self.date_input.setDisplayFormat("MMM dd, yyyy")
+        self.date_input.setMinimumDate(QDate.currentDate())  # Restrict to current or future dates
         self.date_input.setFixedHeight(56)
         
         date_column.addWidget(date_label)
