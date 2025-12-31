@@ -21,13 +21,21 @@ MODEL_CONFIG = {
     "fast": {
         "model": "gemma3:270m",
         "description": "Fast responses - optimized for quick answers",
+        "timeout": 120,  # Increased timeout for fast model (270M can be slow)
     },
     "thinking": {
         "model": "gemma3n:e2b",
         "description": "Thinking mode - optimized for detailed analysis",
+        "timeout": 180,  # More time for thinking model
     }
 }
 DEFAULT_MODE = "fast"
+
+# ==================== REQUEST SETTINGS ====================
+DEFAULT_REQUEST_TIMEOUT = 120  # seconds, fallback timeout
+MAX_RETRIES = 2  # Number of retries for failed requests
+RETRY_DELAY = 1  # Seconds to wait between retries
+EMBEDDING_BATCH_SIZE = 4  # Number of chunks to batch per embedding request
 
 # ==================== EMBEDDING SETTINGS ====================
 EMBEDDING_MODEL = "embeddinggemma:latest"  # For document embeddings

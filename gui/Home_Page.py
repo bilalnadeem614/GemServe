@@ -1,6 +1,6 @@
 # gui/Home_Page.py
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox, QMessageBox
 )
 from PySide6.QtGui import QPixmap, QIcon, QPainter, QPainterPath, QColor
 from PySide6.QtCore import QSize, Qt
@@ -10,7 +10,8 @@ from datetime import datetime
 from PySide6.QtCore import Signal
 from db.todo_db_helper import get_all_tasks, update_task_status
 from gui.edit_task_page import EditTaskPage
-from db import get_all_sessions
+from db import get_all_sessions, delete_session
+from db.vector_store import delete_session_collection
 
 DATA_FILE = "user_data.json"
 
@@ -146,6 +147,46 @@ class HomePage(QWidget):
     def refresh_chat_sessions(self):
         self.load_chat_sessions()
 
+    def delete_chat_session(self, session_id, title):
+        """Delete a chat session with confirmation"""
+        # Show confirmation dialog
+        reply = QMessageBox.question(
+            self,
+            "Delete Chat",
+            f"Are you sure you want to delete this chat?\n\n'{title}'\n\nThis action cannot be undone.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        
+        if reply == QMessageBox.Yes:
+            try:
+                # Delete from database
+                delete_session(session_id)
+                
+                # Delete vector store collection
+                delete_session_collection(session_id)
+                
+                print(f"✅ Chat session {session_id} deleted successfully")
+                
+                # Refresh the chat list
+                self.refresh_chat_sessions()
+                
+                # Show success message
+                QMessageBox.information(
+                    self,
+                    "Chat Deleted",
+                    f"'{title}' has been deleted.",
+                    QMessageBox.Ok
+                )
+            except Exception as e:
+                print(f"❌ Error deleting chat: {e}")
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    f"Failed to delete chat: {str(e)}",
+                    QMessageBox.Ok
+                )
+
     def load_chat_sessions(self):
         while self.chat_buttons_layout.count():
             item = self.chat_buttons_layout.takeAt(0)
@@ -158,12 +199,29 @@ class HomePage(QWidget):
             self.chat_buttons_layout.addWidget(lbl, alignment=Qt.AlignCenter)
         else:
             for session_id, title, updated_at in sessions:
+                # Create a container for chat row with delete button
+                row_container = QWidget()
+                row_layout = QHBoxLayout(row_container)
+                row_layout.setContentsMargins(0, 0, 0, 0)
+                row_layout.setSpacing(8)
+                
+                # Chat button
                 btn = QPushButton(f"  {title}")
                 btn.setObjectName("chatRow")
-                btn.setFixedHeight(50) 
+                btn.setFixedHeight(50)
                 btn.setCursor(Qt.PointingHandCursor)
                 btn.clicked.connect(lambda checked, sid=session_id: self.open_chat_session(sid))
-                self.chat_buttons_layout.addWidget(btn)
+                row_layout.addWidget(btn)
+                
+                # Delete button (X)
+                delete_btn = QPushButton("✕")
+                delete_btn.setObjectName("chatDeleteBtn")
+                delete_btn.setFixedSize(40, 50)
+                delete_btn.setCursor(Qt.PointingHandCursor)
+                delete_btn.clicked.connect(lambda checked, sid=session_id, title=title: self.delete_chat_session(sid, title))
+                row_layout.addWidget(delete_btn)
+                
+                self.chat_buttons_layout.addWidget(row_container)
         self.chat_buttons_layout.addStretch()
 
     def load_task_rows(self, layout):
@@ -385,7 +443,24 @@ class HomePage(QWidget):
                     border: 1px solid rgba(139, 92, 246, 0.4);
                 }
                 
-                QWidget#taskRow { 
+                QPushButton#chatDeleteBtn {
+                    background: rgba(220, 38, 38, 0.1);
+                    border-radius: 8px;
+                    border: 1px solid rgba(220, 38, 38, 0.3);
+                    color: #FCA5A5;
+                    font-weight: bold;
+                    font-size: 18px;
+                }
+                QPushButton#chatDeleteBtn:hover {
+                    background: rgba(220, 38, 38, 0.3);
+                    border: 1px solid rgba(220, 38, 38, 0.6);
+                    color: #FEE2E2;
+                }
+                QPushButton#chatDeleteBtn:pressed {
+                    background: rgba(220, 38, 38, 0.5);
+                }
+                
+                QWidget#taskRow {
                     background: rgba(30, 41, 59, 0.4);
                     border-radius: 16px; 
                     border: 1px solid rgba(71, 85, 105, 0.3); 
@@ -555,7 +630,24 @@ class HomePage(QWidget):
                     border: 1.5px solid rgba(139, 92, 246, 0.3);
                 }
                 
-                QWidget#taskRow { 
+                QPushButton#chatDeleteBtn {
+                    background: rgba(254, 226, 226, 0.5);
+                    border-radius: 8px;
+                    border: 1px solid rgba(220, 38, 38, 0.3);
+                    color: #991B1B;
+                    font-weight: bold;
+                    font-size: 18px;
+                }
+                QPushButton#chatDeleteBtn:hover {
+                    background: rgba(254, 226, 226, 0.8);
+                    border: 1px solid rgba(220, 38, 38, 0.6);
+                    color: #7F1D1D;
+                }
+                QPushButton#chatDeleteBtn:pressed {
+                    background: rgba(220, 38, 38, 0.4);
+                }
+                
+                QWidget#taskRow {
                     background: rgba(255, 255, 255, 0.8);
                     border-radius: 16px; 
                     border: 1.5px solid rgba(226, 232, 240, 0.8); 
