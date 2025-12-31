@@ -33,6 +33,11 @@ class TodoList(QWidget):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.check_for_updates)
         self.refresh_timer.start(10000)  # 10 seconds = 10000 milliseconds
+        
+        # ⭐ Setup time constraint update timer (updates every minute to keep time limit current)
+        self.time_update_timer = QTimer()
+        self.time_update_timer.timeout.connect(self.update_current_time_constraint)
+        self.time_update_timer.start(60000)  # 60 seconds = 1 minute
 
     def check_for_updates(self):
         """Check if database has changed and refresh UI if needed"""
@@ -50,11 +55,15 @@ class TodoList(QWidget):
                 return
                 
             if current_state != self.last_state:
-                print(f"📊 Database changed: {self.last_state} -> {current_state}")
                 self.load_tasks()  # Refresh the UI
                 self.last_state = current_state
         except Exception as e:
             print(f"Error checking for updates: {e}")
+
+    def update_current_time_constraint(self):
+        """Update time constraint every minute if today's date is selected"""
+        if self.date_input.date() == QDate.currentDate():
+            self.time_input.setMinimumTime(QTime.currentTime())
 
     def build_ui(self):
         # Header Section
@@ -175,7 +184,8 @@ class TodoList(QWidget):
         self.date_input.setDisplayFormat("yyyy-MM-dd")
         self.date_input.setFixedHeight(55)
         self.date_input.setCursor(Qt.PointingHandCursor)
-        
+        self.date_input.dateChanged.connect(self.update_time_limit)
+
         # Time Input
         self.time_input = QTimeEdit()
         self.time_input.setObjectName("timeInput")
@@ -183,6 +193,11 @@ class TodoList(QWidget):
         self.time_input.setDisplayFormat("hh:mm AP")
         self.time_input.setFixedHeight(55)
         self.time_input.setCursor(Qt.PointingHandCursor)
+        # ⭐ Disable up/down arrow buttons
+        self.time_input.setButtonSymbols(QTimeEdit.NoButtons)
+        
+        # ⭐ Set initial time constraint for today (blocks past time)
+        self.time_input.setMinimumTime(QTime.currentTime())
         
         input_layout.addWidget(self.add_button)
         input_layout.addWidget(self.task_input, 2)
@@ -191,6 +206,17 @@ class TodoList(QWidget):
 
         content_layout.addWidget(input_frame)
         self.main_layout.addWidget(content)
+
+    def update_time_limit(self, selected_date):
+        """Prevent selecting past time for today, allow any time for future dates"""
+        today = QDate.currentDate()
+
+        if selected_date == today:
+            # Today → block past time (with current time, not static)
+            self.time_input.setMinimumTime(QTime.currentTime())
+        else:
+            # Future date → allow any time
+            self.time_input.setMinimumTime(QTime(0, 0))
 
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
@@ -678,6 +704,8 @@ class TodoList(QWidget):
         # Reset date and time to current values
         self.date_input.setDate(QDate.currentDate())
         self.time_input.setTime(QTime.currentTime())
+        # ⭐ Reset time constraint when resetting to today
+        self.time_input.setMinimumTime(QTime.currentTime())
         self.load_tasks()
 
     def refresh_page(self):

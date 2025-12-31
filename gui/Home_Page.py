@@ -3,11 +3,10 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox, QMessageBox
 )
 from PySide6.QtGui import QPixmap, QIcon, QPainter, QPainterPath, QColor
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, Signal, QTimer
 import json
 import os
 from datetime import datetime
-from PySide6.QtCore import Signal
 from db.todo_db_helper import get_all_tasks, update_task_status
 from gui.edit_task_page import EditTaskPage
 from db import get_all_sessions, delete_session
@@ -17,6 +16,7 @@ DATA_FILE = "user_data.json"
 
 class HomePage(QWidget):
     task_status_changed = Signal()
+    
     def __init__(self, go_to_settings, go_to_tasks, go_to_chatbot, open_chat_session):
         super().__init__()
         self.go_to_settings = go_to_settings
@@ -28,6 +28,30 @@ class HomePage(QWidget):
         self.setup_ui()
         self.load_chat_sessions()
         self.load_task_rows(self.task_layout)
+        
+        # ⭐ Setup auto-refresh timer (checks every 10 seconds for database changes)
+        self.refresh_timer = QTimer()
+        self.refresh_timer.timeout.connect(self.check_for_updates)
+        self.refresh_timer.start(10000)  # 10 seconds
+
+    def check_for_updates(self):
+        """Check if database has changed and refresh UI if needed"""
+        try:
+            all_tasks = get_all_tasks()
+            # Filter only pending tasks (is_done == 0)
+            tasks = [t for t in all_tasks if t[5] == 0]
+            current_count = len(tasks)
+            
+            # Compare with last known state
+            if not hasattr(self, 'last_task_count'):
+                self.last_task_count = current_count
+                return
+                
+            if current_count != self.last_task_count:
+                self.refresh_tasks()  # Refresh the UI
+                self.last_task_count = current_count
+        except Exception as e:
+            print(f"Error checking for updates on home page: {e}")
 
     def setup_ui(self):
         # Overall container layout
@@ -300,6 +324,12 @@ class HomePage(QWidget):
             painter.end()
             self.profile_button.setIcon(QIcon(canvas))
             self.profile_button.setIconSize(QSize(85, 85))
+    
+    def closeEvent(self, event):
+        """Stop the timer when widget is closed"""
+        if hasattr(self, 'refresh_timer'):
+            self.refresh_timer.stop()
+        event.accept()
 
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
