@@ -2,7 +2,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QLineEdit,
     QPushButton, QHBoxLayout, QDateEdit, QTimeEdit, QCheckBox, QFrame
 )
-from PySide6.QtCore import Qt, QDate, QTime, Signal
+from PySide6.QtCore import Qt, QDate, QTime, Signal, QTimer
 from db.todo_db_helper import update_task
 import json
 import os
@@ -11,6 +11,7 @@ DATA_FILE = "user_data.json"
 
 class EditTaskPage(QWidget):
     task_updated = Signal()
+    
     def __init__(self, task_id, title, task_date, task_time, is_done):
         super().__init__()
         self.task_id = task_id
@@ -76,6 +77,7 @@ class EditTaskPage(QWidget):
         self.date_input.setDisplayFormat("MMM dd, yyyy")
         self.date_input.setMinimumDate(QDate.currentDate())  # Restrict to current or future dates
         self.date_input.setFixedHeight(56)
+        self.date_input.dateChanged.connect(self.update_time_limit)
         
         date_column.addWidget(date_label)
         date_column.addWidget(self.date_input)
@@ -97,6 +99,8 @@ class EditTaskPage(QWidget):
         self.time_input.setObjectName("inputField")
         self.time_input.setDisplayFormat("hh:mm AP")
         self.time_input.setFixedHeight(56)
+        # ⭐ Disable up/down arrow buttons
+        self.time_input.setButtonSymbols(QTimeEdit.NoButtons)
         
         time_column.addWidget(time_label)
         time_column.addWidget(self.time_input)
@@ -145,8 +149,32 @@ class EditTaskPage(QWidget):
         
         main_layout.addWidget(content)
         
+        # ⭐ Set initial time constraint based on selected date
+        self.update_time_limit(date)
+        
+        # ⭐ Setup time constraint update timer (updates every minute)
+        self.time_update_timer = QTimer()
+        self.time_update_timer.timeout.connect(self.update_current_time_constraint)
+        self.time_update_timer.start(60000)  # 60 seconds = 1 minute
+        
         # Apply dark mode on initialization
         self.apply_dark_mode(self.dark_mode)
+
+    def update_time_limit(self, selected_date):
+        """Prevent selecting past time for today, allow any time for future dates"""
+        today = QDate.currentDate()
+
+        if selected_date == today:
+            # Today → block past time (with current time, not static)
+            self.time_input.setMinimumTime(QTime.currentTime())
+        else:
+            # Future date → allow any time
+            self.time_input.setMinimumTime(QTime(0, 0))
+
+    def update_current_time_constraint(self):
+        """Update time constraint every minute if today's date is selected"""
+        if self.date_input.date() == QDate.currentDate():
+            self.time_input.setMinimumTime(QTime.currentTime())
 
     def load_dark_mode(self):
         """Load dark mode preference from user_data.json"""
@@ -574,3 +602,9 @@ class EditTaskPage(QWidget):
         update_task(self.task_id, new_title, new_date, new_time, new_status)
         self.task_updated.emit()
         self.close()
+
+    def closeEvent(self, event):
+        """Stop the timer when widget is closed"""
+        if hasattr(self, 'time_update_timer'):
+            self.time_update_timer.stop()
+        event.accept()
