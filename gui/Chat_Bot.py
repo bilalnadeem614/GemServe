@@ -14,6 +14,8 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QFileDialog,
     QMessageBox,
+    QLineEdit,
+    QTextEdit,
 )
 from PySide6.QtWidgets import QComboBox
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
@@ -375,12 +377,41 @@ class ChatWindow(QWidget):
         self.wrapper.setMaximumHeight(54)
 
         w_layout = QHBoxLayout(self.wrapper)
-        w_layout.setContentsMargins(55, 0, 55, 0)
+        w_layout.setContentsMargins(55, 0, 215, 0)
 
-        self.input = QLineEdit()
+        self.input = QTextEdit()
         self.input.setObjectName("messageInput")
         self.input.setPlaceholderText("Type your message...")
-        self.input.returnPressed.connect(self.on_send)
+        self.input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.input.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.input.setFixedHeight(36)
+        self.input.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+
+        def _adjust_height():
+            doc_h = int(self.input.document().size().height())
+            new_h = max(36, min(doc_h + 10, 160))
+            self.input.setFixedHeight(new_h)
+            # grow wrapper and frame to match
+            pad = 18  # top+bottom padding inside wrapper
+            wrapper_h = max(54, new_h + pad)
+            self.wrapper.setMinimumHeight(wrapper_h)
+            self.wrapper.setMaximumHeight(wrapper_h)
+            self.input_frame.setFixedHeight(wrapper_h + 36)
+            # keep overlay buttons vertically centred
+            btn_y = (wrapper_h - 36) // 2
+            self.mic_btn.setGeometry(9, btn_y, 36, 36)
+            self.mode_combo.setGeometry(self.wrapper.width() - 210, btn_y, 150, 36)
+            self.file_btn.setGeometry(self.wrapper.width() - 45, btn_y, 36, 36)
+
+        self.input.document().contentsChanged.connect(_adjust_height)
+
+        def _key_press(event):
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter) and not (event.modifiers() & Qt.ShiftModifier):
+                self.on_send()
+            else:
+                QTextEdit.keyPressEvent(self.input, event)
+
+        self.input.keyPressEvent = _key_press
         w_layout.addWidget(self.input)
 
         self.mic_btn = QPushButton("🎤", self.wrapper)
@@ -589,7 +620,7 @@ class ChatWindow(QWidget):
 
     # ---------------- SEND MESSAGE ----------------
     def on_send(self):
-        text = self.input.text().strip()
+        text = self.input.toPlainText().strip()
         if not text:
             return
 
@@ -705,7 +736,7 @@ class ChatWindow(QWidget):
         Central entry point for any text input — typed OR spoken.
         Voice just calls this after speech-to-text.
         """
-        self.input.setText(text)
+        self.input.setPlainText(text)
         self.on_send()
 
     def on_llm_response(self, response):
