@@ -616,32 +616,68 @@ def get_system_info() -> dict:
 #     "powerpoint":    "powerpnt",
 # }
 
-# _MS_URI_MAP = {
-#     "settings":  "ms-settings:",
-#     "camera":    "microsoft.windows.camera:",
-#     "calendar":  "outlookcal:",
-#     "mail":      "outlookmail:",
-#     "clock":     "ms-clock:",
-#     "maps":      "bingmaps:",
-#     "store":     "ms-windows-store:",
-#     "browser":   "microsoft-edge:",
-# }
+
+_APP_MAP = {
+    "notepad": "notepad",
+    "paint": "mspaint",
+    "task manager": "taskmgr",
+    "file explorer": "explorer",
+    "explorer": "explorer",
+    "control panel": "control",
+    "snipping tool": "snippingtool",
+    "screenshot": "snippingtool",
+    "cmd": "cmd",
+    "terminal": "wt",
+    "powershell": "powershell",
+    "chrome": "chrome",
+    "firefox": "firefox",
+    "edge": "msedge",
+    "word": "winword",
+    "excel": "excel",
+    "powerpoint": "powerpnt",
+}
+
+_MS_URI_MAP = {
+    "settings": "ms-settings:",
+    "camera": "microsoft.windows.camera:",
+    "calendar": "outlookcal:",
+    "mail": "outlookmail:",
+    "clock": "ms-clock:",
+    "maps": "bingmaps:",
+    "store": "ms-windows-store:",
+    "browser": "microsoft-edge:",
+}
 
 
-# def launch_app(app_name: str) -> dict:
-#     key = app_name.lower().strip()
-#     if key in _MS_URI_MAP:
-#         try:
-#             os.startfile(_MS_URI_MAP[key])
-#             return {"status": "success", "message": f"🚀 Launching {app_name}..."}
-#         except Exception as e:
-#             return {"status": "error", "message": f"❌ Could not launch {app_name}: {e}"}
-#     cmd = _APP_MAP.get(key, key)
-#     try:
-#         subprocess.Popen(cmd, shell=True)
-#         return {"status": "success", "message": f"🚀 Launching {app_name}..."}
-#     except Exception as e:
-#         return {"status": "error", "message": f"❌ Could not launch {app_name}: {e}"}
+def launch_app(app_name: str) -> dict:
+    """Attempt to launch a named app or command.
+
+    Returns a dict with `status` and `message` suitable for UI display.
+    """
+    if not app_name:
+        return {"status": "error", "message": "❌ No app name provided."}
+
+    key = app_name.lower().strip()
+
+    # MS URI scheme (open Settings, Camera, etc.)
+    if key in _MS_URI_MAP:
+        try:
+            os.startfile(_MS_URI_MAP[key])
+            return {"status": "success", "message": f"🚀 Launching {app_name}..."}
+        except Exception as e:
+            return {"status": "error", "message": f"❌ Could not launch {app_name}: {e}"}
+
+    # map friendly name to executable
+    cmd = _APP_MAP.get(key, app_name)
+    try:
+        # If a simple executable name, let Popen handle it; otherwise use shell for full commands
+        if isinstance(cmd, str):
+            subprocess.Popen(cmd, shell=True)
+        else:
+            subprocess.Popen(cmd)
+        return {"status": "success", "message": f"🚀 Launching {app_name}..."}
+    except Exception as e:
+        return {"status": "error", "message": f"❌ Could not launch {app_name}: {e}"}
 
 
 # ─────────────────────────────────────────────────────────────
