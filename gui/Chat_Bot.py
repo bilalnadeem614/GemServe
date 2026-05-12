@@ -1,5 +1,6 @@
 # gui/Chat_Bot.py
 import sys, os
+import logging
 from services.system_intent_service import handle_system_command, is_system_command
 from PySide6.QtWidgets import (
     QApplication,
@@ -21,7 +22,8 @@ from PySide6.QtWidgets import QComboBox
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QIcon
 import shutil
-from gui.speech_popup import open_speech_popup
+from gui.speech_popup import open_speech_popup, SpeechPopup
+from services.wake_word_detector import WakeWordDetector
 
 # Import database and services
 from db import (
@@ -51,6 +53,10 @@ from utils.helpers import sanitize_filename
 from gui.Chat_Bot_styles import get_chat_styles
 from services.chat_service import detect_todo_intent, handle_todo_intent
 from services.app_service import handle_app_command
+from services.model_manager import ModelManager
+
+
+logger = logging.getLogger(__name__)
 # ---------------------- MESSAGE BUBBLE -------------------------
 class MessageBubble(QFrame):
     def __init__(self, text, is_user, dark_mode=False):
@@ -278,10 +284,11 @@ class RouterWorker(QThread):
 
 # ----------------------- MAIN CHAT WINDOW ------------------------
 class ChatWindow(QWidget):
-    def __init__(self, go_home_callback, home_page_refresh_callback):
+    def __init__(self, go_home_callback, home_page_refresh_callback, model_manager=None):
         super().__init__()
         self.go_home = go_home_callback
         self.home_page_refresh = home_page_refresh_callback
+        self.model_manager = model_manager or ModelManager()
         self.dark_mode = False
         self.current_session_id = None
         self.is_new_session = True
@@ -289,12 +296,84 @@ class ChatWindow(QWidget):
         self.file_worker = None
         self._speech_popup = None
         self.router_worker = None
+        self.wake_word_detector = None
 
         self.file_operation_mode = False
         self.pending_file_action = None
 
         self.setMinimumSize(450, 620)
         self.setup_ui()
+
+    def setup_wake_word_detector(self, model_manager=None):
+        """Create and wire the wake-word detector used by the chat window."""
+        model_manager = model_manager or self.model_manager
+        detector = WakeWordDetector(model_manager=model_manager, debug_mode=True)
+        detector.wake_word_detected.connect(self._on_wake_word_detected)
+        self.wake_word_detector = detector
+        logger.info("Wake-word detector attached to ChatWindow.")
+        return detector
+
+    def start_wake_word_detection(self):
+        """Start wake-word detection when the chat window becomes visible."""
+        if self.wake_word_detector is None:
+            logger.warning("Wake-word detector is not available on ChatWindow.")
+            return
+
+        worker_thread = getattr(self.wake_word_detector, "_worker_thread", None)
+        if worker_thread is not None and worker_thread.isRunning():
+            logger.info("Wake-word detector thread is already running.")
+            return
+
+        logger.info("Wake-word detection start requested from ChatWindow.")
+        try:
+            self.model_manager.get_tiny_model()
+            logger.info("Tiny Whisper model primed for wake-word detection.")
+        except Exception as exc:
+            logger.warning("Could not prime tiny model before wake-word detection: %s", exc)
+
+        if hasattr(self.wake_word_detector, "start_background_thread"):
+            logger.info("Wake-word detector starting listening/transcribing from ChatWindow.")
+            thread = self.wake_word_detector.start_background_thread()
+            logger.info("Wake-word detector background thread started: %s", thread)
+
+    def stop_wake_word_detection(self):
+        """Stop wake-word detection when the chat window is hidden."""
+        if self.wake_word_detector is None:
+            logger.warning("stop_wake_word_detection() called but detector is unavailable.")
+            return
+
+        if hasattr(self.wake_word_detector, "stop_detector_gracefully"):
+            logger.info("Wake-word detector stopping from ChatWindow.")
+            self.wake_word_detector.stop_detector_gracefully()
+        else:
+            logger.info("Wake-word detector fallback stop_listening() from ChatWindow.")
+            self.wake_word_detector.stop_listening()
+
+    def _on_wake_word_detected(self, text: str):
+        """Forward wake-word events to the active speech popup."""
+        logger.info("Wake word detected in ChatWindow: %s", text)
+        self._set_wake_word_detected_state(text)
+        if self._speech_popup is None:
+            self._speech_popup = SpeechPopup(
+                self,
+                model_manager=self.model_manager,
+                whisper_model_dir="models/whisper",
+                triggered_by_wake_word=True,
+                wake_word_detector=self.wake_word_detector,
+            )
+            self._speech_popup.text_ready.connect(self._on_voice_text)
+            self._speech_popup.finished.connect(self._on_speech_popup_finished)
+
+        self._speech_popup.accept_wake_word_trigger(text)
+        self._speech_popup.show()
+        self._speech_popup.raise_()
+        self._speech_popup.activateWindow()
+
+    def _on_speech_popup_finished(self, result: int):
+        """Restart wake-word listening after the popup completes a voice command."""
+        logger.info("Speech popup finished with result=%s; scheduling wake-word restart.", result)
+        self._set_wake_word_listening_state()
+        QTimer.singleShot(250, self.start_wake_word_detection)
 
     def setup_ui(self):
         root = QVBoxLayout(self)
@@ -304,10 +383,11 @@ class ChatWindow(QWidget):
         # ---------------- HEADER ----------------
         self.header = QFrame()
         self.header.setObjectName("header")
-        self.header.setFixedHeight(70)
+        self.header.setFixedHeight(94)
 
         h_layout = QHBoxLayout(self.header)
-        h_layout.setContentsMargins(20, 15, 20, 15)
+        h_layout.setContentsMargins(20, 12, 20, 12)
+        h_layout.setSpacing(12)
 
         self.back_btn = QPushButton("←")
         self.back_btn.setObjectName("backButton")
@@ -323,6 +403,35 @@ class ChatWindow(QWidget):
         h_layout.addStretch()
         h_layout.addWidget(self.title)
         h_layout.addStretch()
+
+        self._wake_indicator = QFrame()
+        self._wake_indicator.setObjectName("wakeIndicator")
+        self._wake_indicator.setFixedHeight(28)
+        self._wake_indicator_layout = QHBoxLayout(self._wake_indicator)
+        self._wake_indicator_layout.setContentsMargins(0, 0, 0, 0)
+        self._wake_indicator_layout.setSpacing(8)
+
+        self._wake_dot = QLabel("●")
+        self._wake_dot.setObjectName("wakeIndicatorDot")
+        self._wake_dot.setFixedWidth(14)
+        self._wake_dot.setAlignment(Qt.AlignCenter)
+
+        self._wake_indicator_label = QLabel("🎤 Listening for 'Hey' or 'Hello'")
+        self._wake_indicator_label.setObjectName("wakeIndicatorLabel")
+
+        self._wake_indicator_layout.addWidget(self._wake_dot)
+        self._wake_indicator_layout.addWidget(self._wake_indicator_label)
+        self._wake_indicator_layout.addStretch()
+
+        self._wake_indicator_visible = True
+        self._wake_pulse_on = False
+        self._wake_indicator_timer = QTimer(self)
+        self._wake_indicator_timer.setInterval(550)
+        self._wake_indicator_timer.timeout.connect(self._pulse_wake_indicator)
+        self._wake_indicator_timer.start()
+
+        self._set_wake_word_listening_state()
+        h_layout.addWidget(self._wake_indicator)
 
         root.addWidget(self.header)
 
@@ -521,6 +630,52 @@ class ChatWindow(QWidget):
     def apply_dark_mode(self, enabled):
         self.dark_mode = enabled
         self.setStyleSheet(get_chat_styles(enabled))
+        if self.wake_word_detector is None:
+            return
+        if self._wake_indicator_visible:
+            self._set_wake_word_listening_state()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._wake_indicator_visible = True
+        self._wake_indicator.setVisible(True)
+        self._wake_indicator_timer.start()
+        self._set_wake_word_listening_state()
+        self.start_wake_word_detection()
+
+    def hideEvent(self, event):
+        QTimer.singleShot(0, self.stop_wake_word_detection)
+        self._wake_indicator_timer.stop()
+        self._wake_indicator.setVisible(False)
+        self._wake_indicator_visible = False
+        super().hideEvent(event)
+
+    def _pulse_wake_indicator(self):
+        """Animate the listening dot with a subtle pulse."""
+        self._wake_pulse_on = not self._wake_pulse_on
+        if self._wake_pulse_on:
+            self._wake_dot.setStyleSheet(
+                "color: #22C55E; font-size: 14px; font-weight: 700;"
+            )
+        else:
+            self._wake_dot.setStyleSheet(
+                "color: #86EFAC; font-size: 12px; font-weight: 700;"
+            )
+
+    def _set_wake_word_listening_state(self):
+        """Show the default wake-word listening state."""
+        self._wake_indicator_label.setText("🎤 Listening for 'Hi', 'Hey' or 'Hello'")
+        self._wake_indicator_label.setStyleSheet("color: #16A34A; font-weight: 600;")
+        self._wake_dot.setStyleSheet("color: #22C55E; font-size: 14px; font-weight: 700;")
+
+    def _set_wake_word_detected_state(self, transcription: str = ""):
+        """Update the indicator when a wake word has been detected."""
+        label_text = "✅ Wake word detected"
+        if transcription:
+            label_text = f"✅ Wake word detected: {transcription}"
+        self._wake_indicator_label.setText(label_text)
+        self._wake_indicator_label.setStyleSheet("color: #0F766E; font-weight: 700;")
+        self._wake_dot.setStyleSheet("color: #14B8A6; font-size: 14px; font-weight: 800;")
 
     # ---------------- MESSAGE FUNCTIONS ----------------
     def add_message(self, text, is_user, save_to_db=True):
@@ -733,7 +888,7 @@ class ChatWindow(QWidget):
 
     def process_text_input(self, text: str):
         """
-        Central entry point for any text input — typed OR spoken.
+        Central entry point for any text input - typed OR spoken.
         Voice just calls this after speech-to-text.
         """
         self.input.setPlainText(text)
@@ -765,9 +920,13 @@ class ChatWindow(QWidget):
         self.input.setFocus()
 
     def on_mic_click(self):
-        from gui.speech_popup import SpeechPopup
         if self._speech_popup is None:
-            self._speech_popup = SpeechPopup(self, whisper_model_dir="models/whisper")
+            self._speech_popup = SpeechPopup(
+                self,
+                model_manager=self.model_manager,
+                whisper_model_dir="models/whisper",
+                wake_word_detector=self.wake_word_detector,
+            )
             self._speech_popup.text_ready.connect(self._on_voice_text)
         self._speech_popup.show()
 
@@ -895,8 +1054,9 @@ class ChatWindow(QWidget):
                     self.add_file_to_ui(filename)
 
     def on_back(self):
+        logger.info("ChatWindow back button clicked; returning to home page.")
         self.home_page_refresh()
-        self.go_home()
+        QTimer.singleShot(0, self.go_home)
 
 
 # ---------------- MAIN ----------------

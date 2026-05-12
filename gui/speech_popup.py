@@ -18,12 +18,14 @@ from PySide6.QtWidgets import (
     QTextEdit, QLabel, QFrame, QWidget, QGraphicsDropShadowEffect
 )
 from PySide6.QtCore import (
-    Qt, QTimer, Signal, QObject, QThread, QRect
+    Qt, QTimer, Signal, QObject, QThread, QRect, Slot
 )
 from PySide6.QtGui import (
     QPainter, QColor, QPen, QBrush, QFont, QLinearGradient,
     QPainterPath, QRadialGradient, QCursor
 )
+
+from services.model_manager import ModelManager
 
 C_GRAD_TOP = QColor("#7C3AED")
 C_GRAD_BOT = QColor("#9D5CF6")
@@ -162,17 +164,33 @@ class TranscribeWorker(QObject):
     silence_ended      = Signal()
     error_occurred     = Signal(str)
 
-    def __init__(self):
+    def __init__(
+        self,
+        model_manager: ModelManager,
+        model_dir: str = "models/whisper",
+        triggered_by_wake_word: bool = False,
+    ):
         super().__init__()
         self._running = False
         self._model   = None
+        self._model_manager = model_manager
+        self._triggered_by_wake_word = triggered_by_wake_word
+        self._model_dir = model_dir
 
     def load_model(self):
         try:
-            from faster_whisper import WhisperModel
             self.status_update.emit("Loading model…")
-            self._model = WhisperModel("base", device="cpu",
-                                       download_root="models/whisper")
+            if self._triggered_by_wake_word:
+                try:
+                    self._model = self._model_manager.get_base_model(self._model_dir)
+                except MemoryError:
+                    self.status_update.emit("Optimizing memory…")
+                    self._model = self._model_manager.switch_model(
+                        True,
+                        base_download_root=self._model_dir,
+                    )
+            else:
+                self._model = self._model_manager.get_base_model(self._model_dir)
             self.status_update.emit("Listening…")
         except Exception as e:
             self.error_occurred.emit(f"Model error: {e}")
@@ -255,19 +273,35 @@ class TranscribeWorker(QObject):
 class SpeechPopup(QDialog):
     text_ready = Signal(str)
 
-    def __init__(self, parent=None, whisper_model_dir: str = None):
+    def __init__(
+        self,
+        parent=None,
+        model_manager: object = None,
+        whisper_model_dir: str = None,
+        triggered_by_wake_word: bool = False,
+        wake_word_detector: object = None,
+    ):
         super().__init__(parent)
         self._recording    = False
         self._model_loaded = False
+        self._triggered_by_wake_word = triggered_by_wake_word
+        self._model_manager = model_manager or ModelManager()
+        self._whisper_model_dir = whisper_model_dir or "models/whisper"
 
         self._worker_thread = QThread(self)
-        self._worker        = TranscribeWorker()
+        self._worker        = TranscribeWorker(
+            self._model_manager,
+            self._whisper_model_dir,
+            self._triggered_by_wake_word,
+        )
         self._worker.moveToThread(self._worker_thread)
 
         self._setup_ui()
         self._connect_signals()
+        if wake_word_detector is not None and hasattr(wake_word_detector, "wake_word_detected"):
+            wake_word_detector.wake_word_detected.connect(self.accept_wake_word_trigger)
+        self._worker_thread.started.connect(self._worker.load_model)
         self._worker_thread.start()
-        QTimer.singleShot(100, self._worker.load_model)
 
     # ── UI ──────────────────────────────────
     def _setup_ui(self):
@@ -394,17 +428,51 @@ class SpeechPopup(QDialog):
     def _auto_start_on_ready(self, msg: str):
         if msg == "Listening…" and not self._recording and not self._model_loaded:
             self._model_loaded = True
+            if self._triggered_by_wake_word:
+                self._status_label.setText("Wake word detected...")
             self._start_recording()
 
+    @Slot(str)
+    def accept_wake_word_trigger(self, text: str = ""):
+        """Accept a wake-word trigger and begin recording immediately.
+
+        Args:
+            text: The detected wake-word transcription, if provided by the
+                detector.
+        """
+        self._triggered_by_wake_word = True
+        self._status_label.setText("Wake word detected...")
+
+        if self._recording:
+            return
+
+        QTimer.singleShot(0, self._start_recording)
+
     def _start_recording(self):
+        if self._recording:
+            return
         self._recording = True
         self._waveform.set_active(True)
         self._worker.start_recording()
 
     def _on_transcription(self, text: str):
-        if text:
-            self._text_edit.setPlainText(text)
-            self.text_ready.emit(text)
+        if not text:
+            QTimer.singleShot(600, self.accept)
+            return
+
+        self._text_edit.setPlainText(text)
+
+        if self._triggered_by_wake_word:
+            parent = self.parentWidget()
+            if parent is not None and hasattr(parent, "input") and hasattr(parent, "on_send"):
+                parent.input.setPlainText(text)
+                parent.on_send()
+            else:
+                self.text_ready.emit(text)
+            QTimer.singleShot(0, self.accept)
+            return
+
+        self.text_ready.emit(text)
         QTimer.singleShot(600, self.accept)
 
     def _on_levels(self, levels: list):
@@ -443,7 +511,10 @@ class SpeechPopup(QDialog):
         self._text_edit.clear()
         self._silence_ring.set_progress(0.0, visible=False)
         self._status_label.setStyleSheet("color: #7C3AED; background: transparent;")
-        if self._model_loaded and not self._recording:
+        if self._triggered_by_wake_word:
+            self._status_label.setText("Wake word detected...")
+            QTimer.singleShot(0, self._start_recording)
+        elif self._model_loaded and not self._recording:
             self._status_label.setText("Listening…")
             QTimer.singleShot(200, self._start_recording)
         else:
@@ -488,8 +559,18 @@ class SpeechPopup(QDialog):
 # ─────────────────────────────────────────────
 #  Helper
 # ─────────────────────────────────────────────
-def open_speech_popup(parent=None, whisper_model_dir: str = None) -> str | None:
-    popup = SpeechPopup(parent=parent, whisper_model_dir=whisper_model_dir)
+def open_speech_popup(
+    parent=None,
+    whisper_model_dir: str = None,
+    triggered_by_wake_word: bool = False,
+    wake_word_detector: object = None,
+) -> str | None:
+    popup = SpeechPopup(
+        parent=parent,
+        whisper_model_dir=whisper_model_dir,
+        triggered_by_wake_word=triggered_by_wake_word,
+        wake_word_detector=wake_word_detector,
+    )
     popup.exec()
     if popup.result() == QDialog.Accepted:
         return popup._text_edit.toPlainText().strip() or None
