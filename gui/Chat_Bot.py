@@ -25,6 +25,7 @@ from PySide6.QtWidgets import QComboBox
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QIcon
 import shutil
+import threading
 from gui.speech_popup import open_speech_popup, SpeechPopup
 from services.wake_word_detector import WakeWordDetector
 
@@ -287,6 +288,8 @@ class RouterWorker(QThread):
 class ChatWindow(QWidget):
     def __init__(self, go_home_callback, home_page_refresh_callback, model_manager=None):
         super().__init__()
+        # Set when the last input came from voice so we can give a TTS ack
+        self._last_input_was_voice = False
         self.go_home = go_home_callback
         self.home_page_refresh = home_page_refresh_callback
         self.model_manager = model_manager or ModelManager()
@@ -779,6 +782,13 @@ class ChatWindow(QWidget):
         text = self.input.toPlainText().strip()
         if not text:
             return
+
+        # If this input came from voice, give a brief TTS acknowledgement.
+        if getattr(self, "_last_input_was_voice", False):
+            try:
+                self._speak_nonblocking("Working on it")
+            finally:
+                self._last_input_was_voice = False
 
         self.input.setEnabled(False)
         self.send_btn.setEnabled(False)
@@ -1516,6 +1526,36 @@ class ChatWindow(QWidget):
         self.input.setPlainText(text)
         self.on_send()
 
+    def _speak_nonblocking(self, msg: str):
+        """Speak a short acknowledgement without blocking the UI."""
+        # Allow disabling TTS via environment for headless/testing environments
+        if os.environ.get("GEMSERVE_DISABLE_TTS", "0").lower() in ("1", "true", "yes"):
+            return
+        def _runner(message: str):
+            try:
+                import pyttsx3
+                engine = pyttsx3.init()
+                engine.say(message)
+                engine.runAndWait()
+                return
+            except Exception:
+                logger.debug("pyttsx3 TTS failed, attempting fallback.")
+
+            # Fallback: on Windows, use PowerShell System.Speech if available
+            try:
+                if sys.platform.startswith("win"):
+                    import subprocess
+                    powershell_cmd = (
+                        "Add-Type -AssemblyName System.Speech;"
+                        f"(New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('{message.replace("'", "\\'")}')"
+                    )
+                    subprocess.run(["powershell", "-Command", powershell_cmd], check=False)
+                    return
+            except Exception:
+                logger.debug("Fallback TTS also failed.")
+
+        threading.Thread(target=_runner, args=(msg,), daemon=True).start()
+
     def on_llm_response(self, response):
         last_item = self.chat_layout.itemAt(self.chat_layout.count() - 2)
         if last_item and last_item.widget():
@@ -1555,6 +1595,8 @@ class ChatWindow(QWidget):
         self._speech_popup.show()
 
     def _on_voice_text(self, text: str):
+        # Mark that this input originated from voice so we can ack when processing
+        self._last_input_was_voice = True
         self.input.setText(text)
         self.add_message(
             "🎤 Voice input coming soon! "

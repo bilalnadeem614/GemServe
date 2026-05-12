@@ -481,6 +481,11 @@ class SpeechPopup(QDialog):
             parent = self.parentWidget()
             if parent is not None and hasattr(parent, "input") and hasattr(parent, "on_send"):
                 parent.input.setPlainText(text)
+                # Mark the parent so it knows this input came from voice (wake-word path)
+                try:
+                    setattr(parent, "_last_input_was_voice", True)
+                except Exception:
+                    pass
                 parent.on_send()
             else:
                 self.text_ready.emit(text)
