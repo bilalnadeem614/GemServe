@@ -51,13 +51,13 @@ def check_due_tasks():
 
 def start_scheduler():
     """Start the scheduler in a separate thread."""
-    schedule.every(1).minutes.do(check_due_tasks)
+    schedule.every(5).seconds.do(check_due_tasks)
     print("Notification scheduler running...")
 
     def run():
         while True:
             schedule.run_pending()
-            time.sleep(5)
+            time.sleep(1)
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()

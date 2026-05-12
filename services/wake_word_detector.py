@@ -222,10 +222,10 @@ class WakeWordDetector(QObject):
                 self._worker_thread = None
                 self._worker = None
 
-    @Slot(bool)
-    def _on_worker_thread_finished(self, detected: bool) -> None:
+    @Slot()
+    def _on_worker_thread_finished(self) -> None:
         """Clean up worker state after the QThread exits."""
-        self._log_debug("Wake word worker finished at %s. Detected=%s", self._timestamp(), detected)
+        self._log_debug("Wake word worker finished at %s.", self._timestamp())
         self._worker = None
         self._worker_thread = None
 

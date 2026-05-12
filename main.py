@@ -111,8 +111,11 @@ class App(QStackedWidget):
         self._switch_page(self.chatbot_page)
 
     def go_home(self):
-        self.refresh_home()
         self._switch_page(self.home_page)
+        try:
+            self.refresh_home()
+        except Exception:
+            logger.exception("Failed to refresh home page after navigation.")
 
     def refresh_home(self):
         """Refresh home page chat sessions"""

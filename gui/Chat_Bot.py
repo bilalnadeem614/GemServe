@@ -1675,10 +1675,9 @@ class ChatWindow(QWidget):
                 if is_processed:
                     self.add_file_to_ui(filename)
 
-    def on_back(self):
+    def on_back(self, checked=False):
         logger.info("ChatWindow back button clicked; returning to home page.")
-        self.home_page_refresh()
-        QTimer.singleShot(0, self.go_home)
+        self.go_home()
 
 
 # ---------------- MAIN ----------------
