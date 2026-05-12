@@ -258,7 +258,22 @@ class TranscribeWorker(QObject):
                 self.error_occurred.emit("Model not loaded.")
                 return
 
-            segments, _ = self._model.transcribe(audio_np, language="en")
+            # Provide an initial prompt to bias Whisper toward expected vocabulary
+            initial_prompt = (
+                "open, close, delete, create, search, remind, add task, file, "
+                "move file, rename file, copy, paste, download, upload, screenshot, "
+                "open browser, new tab, close tab, switch window, minimize, maximize, "
+                "settings, preferences, system, terminal, command prompt, calculator, "
+                "play music, stop music, pause, resume, weather, time, schedule, "
+                "notifications, report, notes, desktop, document, folder, email, calendar, "
+                "Visual Studio Code, vscode, Muhammad, Bilal, Umair, Talha, Zaid, Ali, Rana"
+            )
+
+            segments, _ = self._model.transcribe(
+                audio_np,
+                language="en",
+                initial_prompt=initial_prompt,
+            )
             text = " ".join([seg.text for seg in segments]).strip()
             self.transcription_done.emit(text or "")
             self.status_update.emit("Done ✓")
