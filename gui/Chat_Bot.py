@@ -491,6 +491,7 @@ class ChatWindow(QWidget):
 
         self.input = QTextEdit()
         self.input.setObjectName("messageInput")
+        self.input.setStyleSheet("font-size: 14px; padding: 6px;")
         self.input.setPlaceholderText("Type your message...")
         self.input.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.input.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
