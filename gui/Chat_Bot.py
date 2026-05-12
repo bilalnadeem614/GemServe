@@ -1028,33 +1028,52 @@ class ChatWindow(QWidget):
                 self._re_enable()
                 return
 
-            # ── User picks a file number from search results ───────────────────
             if action == "search_location" and state == "select_action":
                 files = self.pending_file_action.get("files", [])
+
                 if r in ("cancel", "c"):
                     self.add_message("❌ Cancelled.", False, save_to_db=False)
                     self.pending_file_action = None
                     self._re_enable()
                     return
+
                 try:
                     choice = int(r)
+
                     if 1 <= choice <= len(files):
                         selected = files[choice - 1]
+
+                        # AUTO OPEN FILE
                         self.add_message(
-                            f"📄 Selected: {selected}\n\nWhat do you want to do?\n"
-                            "  • open\n  • rename\n  • move",
+                            f"📂 Opening file...\n\n{selected}",
                             False,
                             save_to_db=False,
                         )
-                        self.pending_file_action = {
-                            "action": "search_location",
-                            "state": "select_operation",
-                            "file_path": selected,
-                        }
+
+                        res = open_file(selected)
+
+                        self.add_message(
+                            res.get("message", "✅ File opened."),
+                            False,
+                            save_to_db=False,
+                        )
+
+                        self.pending_file_action = None
+
                     else:
-                        self.add_message(f"❌ Enter a number between 1 and {len(files)}", False, save_to_db=False)
+                        self.add_message(
+                            f"❌ Enter a number between 1 and {len(files)}",
+                            False,
+                            save_to_db=False,
+                        )
+
                 except ValueError:
-                    self.add_message("❌ Enter a number or 'cancel'", False, save_to_db=False)
+                    self.add_message(
+                        "❌ Enter a number or 'cancel'",
+                        False,
+                        save_to_db=False,
+                    )
+
                 self._re_enable()
                 return
 
@@ -1095,6 +1114,22 @@ class ChatWindow(QWidget):
 
         if status == "success":
             self.add_message(result["message"], False, save_to_db=False)
+
+            data = result.get("data", {})
+            found_files = data.get("files", [])
+
+            if found_files:
+                self.pending_file_action = {
+                    "action": "search_location",
+                    "state": "select_action",
+                    "files": found_files,
+                }
+
+                self.add_message(
+                    "\nEnter file number to open it, or type 'cancel':",
+                    False,
+                    save_to_db=False,
+                )
 
         elif status == "error":
             self.add_message(result["message"], False, save_to_db=False)
