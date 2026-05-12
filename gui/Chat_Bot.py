@@ -1,5 +1,8 @@
 # gui/Chat_Bot.py
 import sys, os
+
+# from GemServe.services.file_advanced_service import _normalise_location
+from services.file_advanced_service import _normalise_location
 from services.system_intent_service import handle_system_command, is_system_command
 from PySide6.QtWidgets import (
     QApplication,
@@ -49,6 +52,8 @@ from utils.helpers import sanitize_filename
 from gui.Chat_Bot_styles import get_chat_styles
 from services.chat_service import detect_todo_intent, handle_todo_intent
 from services.app_service import handle_app_command
+
+
 # ---------------------- MESSAGE BUBBLE -------------------------
 class MessageBubble(QFrame):
     def __init__(self, text, is_user, dark_mode=False):
@@ -65,39 +70,36 @@ class MessageBubble(QFrame):
         else:
             bubble.setTextFormat(Qt.PlainText)
         bubble.setOpenExternalLinks(True)
-        bubble.setTextInteractionFlags(Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse)
+        bubble.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.LinksAccessibleByMouse
+        )
 
         badge = QLabel("You" if is_user else "AI")
         badge.setFixedSize(36, 36)
         badge.setAlignment(Qt.AlignCenter)
 
         if dark_mode:
-            badge.setStyleSheet(
-                """
+            badge.setStyleSheet("""
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #6366F1, stop:1 #8B5CF6);
                 color: #FFFFFF;
                 border-radius: 18px;
                 font-weight: 700;
                 font-size: 11px;
-            """
-            )
+            """)
         else:
-            badge.setStyleSheet(
-                """
+            badge.setStyleSheet("""
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 #6366F1, stop:1 #8B5CF6);
                 color: #FFFFFF;
                 border-radius: 18px;
                 font-weight: 700;
                 font-size: 11px;
-            """
-            )
+            """)
 
         if is_user:
             if dark_mode:
-                bubble.setStyleSheet(
-                    """
+                bubble.setStyleSheet("""
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 rgba(139, 92, 246, 0.15), stop:1 rgba(30, 41, 59, 0.8));
                     border: 2px solid rgba(139, 92, 246, 0.3);
@@ -106,11 +108,9 @@ class MessageBubble(QFrame):
                     border-radius: 18px;
                     font-size: 15px;
                     font-weight: 500;
-                """
-                )
+                """)
             else:
-                bubble.setStyleSheet(
-                    """
+                bubble.setStyleSheet("""
                     background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                         stop:0 rgba(245, 243, 255, 0.9), stop:1 #FFFFFF);
                     border: 2px solid rgba(139, 92, 246, 0.25);
@@ -119,8 +119,7 @@ class MessageBubble(QFrame):
                     border-radius: 18px;
                     font-size: 15px;
                     font-weight: 500;
-                """
-                )
+                """)
             layout = QHBoxLayout()
             layout.addStretch()
             layout.addWidget(bubble)
@@ -128,8 +127,7 @@ class MessageBubble(QFrame):
 
         else:
             if dark_mode:
-                bubble.setStyleSheet(
-                    """
+                bubble.setStyleSheet("""
                     background: rgba(30, 41, 59, 0.6);
                     border: 2px solid rgba(71, 85, 105, 0.4);
                     color: #E2E8F0;
@@ -137,11 +135,9 @@ class MessageBubble(QFrame):
                     border-radius: 18px;
                     font-size: 15px;
                     font-weight: 500;
-                """
-                )
+                """)
             else:
-                bubble.setStyleSheet(
-                    """
+                bubble.setStyleSheet("""
                     background: #FFFFFF;
                     border: 2px solid rgba(226, 232, 240, 0.8);
                     color: #1E293B;
@@ -149,8 +145,7 @@ class MessageBubble(QFrame):
                     border-radius: 18px;
                     font-size: 15px;
                     font-weight: 500;
-                """
-                )
+                """)
             layout = QHBoxLayout()
             layout.addWidget(badge)
             layout.addWidget(bubble)
@@ -217,7 +212,9 @@ class FileProcessorWorker(QThread):
                 self.finished.emit(False)
                 return
 
-            self.status_update.emit(f"🔄 Generating embeddings for {len(chunks)} chunks...")
+            self.status_update.emit(
+                f"🔄 Generating embeddings for {len(chunks)} chunks..."
+            )
             self.progress.emit(30)
 
             def embedding_progress(current, total):
@@ -229,7 +226,7 @@ class FileProcessorWorker(QThread):
                 file_id,
                 self.filename,
                 chunks,
-                progress_callback=embedding_progress
+                progress_callback=embedding_progress,
             )
 
             if not success:
@@ -255,8 +252,9 @@ class RouterWorker(QThread):
     Runs is_file_operation_request() in a background thread so the LLM
     routing call never freezes the UI.
     """
+
     finished = Signal(bool)
-    error    = Signal(str)
+    error = Signal(str)
 
     def __init__(self, text: str, mode: str = "fast"):
         super().__init__()
@@ -267,7 +265,10 @@ class RouterWorker(QThread):
         try:
             from services.llm_file_service import is_file_operation_request
             from utils.config import OLLAMA_FAST_MODEL, OLLAMA_THINKING_MODEL
-            model = OLLAMA_THINKING_MODEL if self.mode == "thinking" else OLLAMA_FAST_MODEL
+
+            model = (
+                OLLAMA_THINKING_MODEL if self.mode == "thinking" else OLLAMA_FAST_MODEL
+            )
             is_file, confidence = is_file_operation_request(self.text, model=model)
             self.finished.emit(is_file and confidence > 0.5)
         except Exception as e:
@@ -519,9 +520,8 @@ class ChatWindow(QWidget):
 
             elif result["status"] == "confirm":
                 data = result.get("data", {})
-                file_to_delete = (
-                    data.get("file") or
-                    (data.get("files", [None])[0] if data.get("files") else None)
+                file_to_delete = data.get("file") or (
+                    data.get("files", [None])[0] if data.get("files") else None
                 )
                 self.pending_file_action = {
                     "state": "delete_confirm",
@@ -630,7 +630,10 @@ class ChatWindow(QWidget):
                 self.send_btn.setEnabled(True)
                 self.input.setFocus()
                 return
-        # ✅ APP CONTROL — open app / close app / switch app
+
+        # ─────────────────────────────────────────────
+        # 3. APP CONTROL
+        # ─────────────────────────────────────────────
         app_response = handle_app_command(text)
         if app_response:
             self.add_message(app_response, False, save_to_db=False)
@@ -640,8 +643,39 @@ class ChatWindow(QWidget):
             return
 
         # ─────────────────────────────────────────────
-        # 3. WEB SEARCH CHECK
-        # Route 'search web ...' directly to chat so it bypasses file intent.
+        # 4. STRUCTURED FILE CREATION (docx/xlsx/csv/pdf)
+        # ─────────────────────────────────────────────
+        from services.file_creator_service import (
+            is_file_creation_request,
+            handle_file_creation,
+        )
+
+        if is_file_creation_request(text):
+            result = handle_file_creation(text)
+            self.add_message(result["message"], False, save_to_db=False)
+            self.input.setEnabled(True)
+            self.send_btn.setEnabled(True)
+            self.input.setFocus()
+            return
+
+        # ─────────────────────────────────────────────
+        # 5. ADVANCED FILE OPERATIONS (rename/move/search location)
+        # ─────────────────────────────────────────────
+        from services.file_advanced_service import (
+            is_advanced_file_command,
+            handle_advanced_file_command,
+        )
+
+        if is_advanced_file_command(text) or (
+            self.pending_file_action
+            and self.pending_file_action.get("action")
+            in ("rename", "move", "search_location")
+        ):
+            self._handle_advanced_file(text)
+            return
+
+        # ─────────────────────────────────────────────
+        # 6. WEB SEARCH
         # ─────────────────────────────────────────────
         if text.lower().strip().startswith("search web "):
             mode = self.get_selected_mode()
@@ -653,8 +687,7 @@ class ChatWindow(QWidget):
             return
 
         # ─────────────────────────────────────────────
-        # 4. FILE OPERATION MODE
-        # If mid-way through a file operation always route back to file handler
+        # 7. FILE OPERATION MODE (pending actions)
         # ─────────────────────────────────────────────
         if self.file_operation_mode:
             if self.pending_file_action:
@@ -665,7 +698,7 @@ class ChatWindow(QWidget):
                 return
 
         # ─────────────────────────────────────────────
-        # 5. ROUTE via LLM (file op vs normal chat)
+        # 8. ROUTE via LLM (file op vs normal chat)
         # ─────────────────────────────────────────────
         mode = self.get_selected_mode()
 
@@ -678,6 +711,460 @@ class ChatWindow(QWidget):
             lambda _: self._after_routing(text, mode, False)
         )
         self.router_worker.start()
+
+    def _handle_advanced_file(self, text: str):
+        """Handle advanced file operations: rename, move, search in location."""
+        from services.file_advanced_service import (
+            handle_advanced_file_command,
+            search_in_location,
+            rename_file,
+            rename_multiple_files,
+            move_file,
+            move_multiple_files,
+            _normalise_location,
+        )
+        from services.llm_file_service import _smart_find
+        from services.file_service import open_file
+        from pathlib import Path
+        import os
+
+        def resolve_location(value: str):
+            """Convert user shortcuts like Desktop, Documents, C, all into paths."""
+            raw = (value or "").strip()
+            key = raw.lower()
+            user_profile = os.environ.get("USERPROFILE", "")
+            shortcut_map = {
+                "1": None,
+                "all": None,
+                "2": os.path.join(user_profile, "Desktop"),
+                "desktop": os.path.join(user_profile, "Desktop"),
+                "3": os.path.join(user_profile, "Documents"),
+                "documents": os.path.join(user_profile, "Documents"),
+                "4": os.path.join(user_profile, "Downloads"),
+                "downloads": os.path.join(user_profile, "Downloads"),
+            }
+            return shortcut_map.get(key, _normalise_location(raw))
+
+        def search_grouped(files_to_find, location=None, use_smart=False):
+            """Return one result group per requested file instead of one flat list."""
+            groups = []
+            for fname in files_to_find:
+                if use_smart:
+                    result = search_in_location(fname, None, mode="regex")
+                    found = result.get("files", [])
+                else:
+                    result = search_in_location(fname, location, mode="regex")
+                    found = result.get("files", [])
+                groups.append({"filename": fname, "files": found})
+            return groups
+
+        def build_ambiguous_message(groups, operation):
+            """Build selection message for groups where one filename has many matches."""
+            option_map = []
+            lines = []
+            idx = 1
+            for group in groups:
+                if len(group["files"]) > 1:
+                    lines.append(f"\n📄 Matches for: {group['filename']}")
+                    for path in group["files"]:
+                        lines.append(f"  {idx}. {path}")
+                        option_map.append({"filename": group["filename"], "path": path})
+                        idx += 1
+            return (
+                f"📂 Multiple matches found. Choose the correct file number to {operation}:\n"
+                + "\n".join(lines)
+                + "\n\nEnter number or 'cancel':"
+            ), option_map
+
+        def finish_grouped_move(groups, destination):
+            """Move all files when each requested filename has exactly one selected path."""
+            missing = [g["filename"] for g in groups if len(g["files"]) == 0]
+            ambiguous = [g for g in groups if len(g["files"]) > 1]
+
+            if missing:
+                self.add_message(
+                    f"❌ Could not find: {', '.join(missing)}\n\n"
+                    "📂 Where are these files located?\n\n"
+                    "  • Desktop\n"
+                    "  • Documents\n"
+                    "  • Downloads\n"
+                    "  • C drive / D drive\n"
+                    "  • Full path\n"
+                    "  • all",
+                    False,
+                    save_to_db=False,
+                )
+                return "need_location"
+
+            if not ambiguous:
+                paths = [g["files"][0] for g in groups]
+                destination = _normalise_location(destination) or destination
+                res = move_multiple_files(paths, destination)
+                self.add_message(res["message"], False, save_to_db=False)
+                self.pending_file_action = None
+                return "done"
+
+            message, option_map = build_ambiguous_message(ambiguous, "move")
+            self.add_message(message, False, save_to_db=False)
+            self.pending_file_action = {
+                "action": "move",
+                "state": "select_for_move",
+                "files": option_map,
+                "destination": destination,
+                "remaining_files": [g for g in groups if len(g["files"]) == 1],
+            }
+            return "ambiguous"
+
+        # ─────────────────────────────────────────────────────────────────────
+        # HANDLE PENDING ADVANCED ACTION
+        # ─────────────────────────────────────────────────────────────────────
+        if self.pending_file_action:
+            action = self.pending_file_action.get("action")
+            state = self.pending_file_action.get("state", "")
+            r = text.strip().lower()
+
+            # ── User provided location for RENAME search ──────────────────────
+            if action == "rename" and state == "need_rename_location":
+                files_to_find = self.pending_file_action.get("files", [])
+                new_names = self.pending_file_action.get("new_names", [])
+                location = resolve_location(text)
+
+                self.add_message("🔍 Searching for files…", False, save_to_db=False)
+                groups = search_grouped(files_to_find, location, use_smart=False)
+                self._remove_last_ai_bubble()
+
+                missing = [g["filename"] for g in groups if len(g["files"]) == 0]
+                ambiguous = [g for g in groups if len(g["files"]) > 1]
+
+                if missing:
+                    self.add_message(
+                        f"❌ Could not find: {', '.join(missing)}\n\nCheck the filename and try again.",
+                        False,
+                        save_to_db=False,
+                    )
+                    self.pending_file_action = None
+                elif not ambiguous:
+                    pairs = []
+                    for i, group in enumerate(groups):
+                        if i < len(new_names):
+                            pairs.append({"old_path": group["files"][0], "new_name": new_names[i]})
+                    res = rename_file(pairs[0]["old_path"], pairs[0]["new_name"]) if len(pairs) == 1 else rename_multiple_files(pairs)
+                    self.add_message(res["message"], False, save_to_db=False)
+                    self.pending_file_action = None
+                else:
+                    message, option_map = build_ambiguous_message(ambiguous, "rename")
+                    self.add_message(message, False, save_to_db=False)
+                    self.pending_file_action = {
+                        "action": "rename",
+                        "state": "select_for_rename",
+                        "files": option_map,
+                        "new_names": new_names,
+                        "remaining_files": [g for g in groups if len(g["files"]) == 1],
+                    }
+
+                self._re_enable()
+                return
+
+            # ── User provided location for MOVE search ────────────────────────
+            if action == "move" and state == "need_move_location":
+                files_to_find = self.pending_file_action.get("files", [])
+                destination = self.pending_file_action.get("destination")
+                location = resolve_location(text)
+
+                self.add_message("🔍 Searching for files…", False, save_to_db=False)
+                groups = search_grouped(files_to_find, location, use_smart=False)
+                self._remove_last_ai_bubble()
+
+                result_state = finish_grouped_move(groups, destination)
+                if result_state == "need_location":
+                    self.pending_file_action = {
+                        "action": "move",
+                        "state": "need_move_location",
+                        "files": files_to_find,
+                        "destination": destination,
+                    }
+
+                self._re_enable()
+                return
+
+            # ── User provided destination for MOVE ────────────────────────────
+            if action == "move" and state == "need_destination":
+                destination = _normalise_location(text.strip()) or text.strip()
+                files_to_find = self.pending_file_action.get("files", [])
+
+                self.add_message("🔍 Searching for files…", False, save_to_db=False)
+                groups = search_grouped(files_to_find, use_smart=True)
+                self._remove_last_ai_bubble()
+
+                result_state = finish_grouped_move(groups, destination)
+                if result_state == "need_location":
+                    self.pending_file_action = {
+                        "action": "move",
+                        "state": "need_move_location",
+                        "files": files_to_find,
+                        "destination": destination,
+                    }
+
+                self._re_enable()
+                return
+
+            # ── User provided new name for RENAME ─────────────────────────────
+            if action == "rename" and state == "need_new_name":
+                new_name = text.strip()
+                old_path = self.pending_file_action.get("file_path")
+                res = rename_file(old_path, new_name)
+                self.add_message(res["message"], False, save_to_db=False)
+                self.pending_file_action = None
+                self._re_enable()
+                return
+
+            # ── User selects from multiple files for RENAME ───────────────────
+            if action == "rename" and state == "select_for_rename":
+                files = self.pending_file_action.get("files", [])
+                new_names = self.pending_file_action.get("new_names", [])
+                remaining_files = self.pending_file_action.get("remaining_files", [])
+
+                if r in ("cancel", "c"):
+                    self.add_message("❌ Rename cancelled.", False, save_to_db=False)
+                    self.pending_file_action = None
+                    self._re_enable()
+                    return
+
+                try:
+                    choice = int(r)
+                    if 1 <= choice <= len(files):
+                        selected_item = files[choice - 1]
+                        selected_path = selected_item["path"] if isinstance(selected_item, dict) else selected_item
+
+                        if len(new_names) == 1:
+                            res = rename_file(selected_path, new_names[0])
+                            self.add_message(res["message"], False, save_to_db=False)
+                        else:
+                            pairs = []
+                            selected_filename = selected_item.get("filename") if isinstance(selected_item, dict) else None
+                            for i, old_name in enumerate([g.get("filename") for g in remaining_files]):
+                                if i < len(new_names) and remaining_files[i].get("files"):
+                                    pairs.append({"old_path": remaining_files[i]["files"][0], "new_name": new_names[i]})
+                            if selected_filename in self.pending_file_action.get("files", []):
+                                idx = self.pending_file_action.get("files", []).index(selected_filename)
+                                if idx < len(new_names):
+                                    pairs.append({"old_path": selected_path, "new_name": new_names[idx]})
+                            if not pairs:
+                                self.pending_file_action = {"action": "rename", "state": "need_new_name", "file_path": selected_path}
+                                self.add_message(f"📝 What should '{Path(selected_path).name}' be renamed to?", False, save_to_db=False)
+                                self._re_enable()
+                                return
+                            res = rename_multiple_files(pairs)
+                            self.add_message(res["message"], False, save_to_db=False)
+                        self.pending_file_action = None
+                    else:
+                        self.add_message(f"❌ Enter a number between 1 and {len(files)}", False, save_to_db=False)
+                except ValueError:
+                    self.add_message("❌ Enter a number or 'cancel'", False, save_to_db=False)
+
+                self._re_enable()
+                return
+
+            # ── User selects from multiple files for MOVE ─────────────────────
+            if action == "move" and state == "select_for_move":
+                files = self.pending_file_action.get("files", [])
+                destination = self.pending_file_action.get("destination")
+                remaining_files = self.pending_file_action.get("remaining_files", [])
+
+                if r in ("cancel", "c"):
+                    self.add_message("❌ Move cancelled.", False, save_to_db=False)
+                    self.pending_file_action = None
+                    self._re_enable()
+                    return
+
+                try:
+                    choice = int(r)
+                    if 1 <= choice <= len(files):
+                        selected_item = files[choice - 1]
+                        selected_path = selected_item["path"] if isinstance(selected_item, dict) else selected_item
+                        paths = [selected_path]
+
+                        for group in remaining_files:
+                            if group.get("files"):
+                                paths.append(group["files"][0])
+
+                        destination = _normalise_location(destination) or destination
+                        res = move_multiple_files(paths, destination)
+                        self.add_message(res["message"], False, save_to_db=False)
+                        self.pending_file_action = None
+                    else:
+                        self.add_message(f"❌ Enter a number between 1 and {len(files)}", False, save_to_db=False)
+                except ValueError:
+                    self.add_message("❌ Enter a number or 'cancel'", False, save_to_db=False)
+
+                self._re_enable()
+                return
+
+            # ── User provided location for SEARCH ─────────────────────────────
+            if action == "search_location" and state == "need_search_location":
+                filename = self.pending_file_action.get("files", [None])[0]
+                search_mode = self.pending_file_action.get("search_mode", "regex")
+                location = resolve_location(text)
+
+                result = search_in_location(filename, location, mode=search_mode)
+                if result["status"] in ("error", "not_found"):
+                    self.add_message(result["message"], False, save_to_db=False)
+                    self.pending_file_action = None
+                else:
+                    files_list = "\n".join(f"  {i}. {f}" for i, f in enumerate(result["files"][:20], 1))
+                    extra = f"\n  … and {result['count'] - 20} more" if result["count"] > 20 else ""
+                    loc_str = location if location else "all drives"
+                    self.add_message(
+                        f"🔍 Found {result['count']} file(s) matching '{filename}' in {loc_str}:\n\n{files_list}{extra}\n\n"
+                        "Enter a number to act on a file, or 'cancel':",
+                        False,
+                        save_to_db=False,
+                    )
+                    self.pending_file_action = {
+                        "action": "search_location",
+                        "state": "select_action",
+                        "files": result["files"],
+                    }
+                self._re_enable()
+                return
+
+            # ── User picks a file number from search results ───────────────────
+            if action == "search_location" and state == "select_action":
+                files = self.pending_file_action.get("files", [])
+                if r in ("cancel", "c"):
+                    self.add_message("❌ Cancelled.", False, save_to_db=False)
+                    self.pending_file_action = None
+                    self._re_enable()
+                    return
+                try:
+                    choice = int(r)
+                    if 1 <= choice <= len(files):
+                        selected = files[choice - 1]
+                        self.add_message(
+                            f"📄 Selected: {selected}\n\nWhat do you want to do?\n"
+                            "  • open\n  • rename\n  • move",
+                            False,
+                            save_to_db=False,
+                        )
+                        self.pending_file_action = {
+                            "action": "search_location",
+                            "state": "select_operation",
+                            "file_path": selected,
+                        }
+                    else:
+                        self.add_message(f"❌ Enter a number between 1 and {len(files)}", False, save_to_db=False)
+                except ValueError:
+                    self.add_message("❌ Enter a number or 'cancel'", False, save_to_db=False)
+                self._re_enable()
+                return
+
+            # ── User picks operation (open/rename/move) on selected file ──────
+            if action == "search_location" and state == "select_operation":
+                file_path = self.pending_file_action.get("file_path")
+                if r == "open":
+                    res = open_file(file_path)
+                    self.add_message(res["message"], False, save_to_db=False)
+                    self.pending_file_action = None
+                elif r == "rename":
+                    self.add_message("📝 Enter the new filename:", False, save_to_db=False)
+                    self.pending_file_action = {
+                        "action": "rename",
+                        "state": "need_new_name",
+                        "file_path": file_path,
+                    }
+                elif r == "move":
+                    self.add_message("📁 Enter destination folder:", False, save_to_db=False)
+                    self.pending_file_action = {
+                        "action": "move",
+                        "state": "need_destination",
+                        "files": [file_path],
+                    }
+                elif r in ("cancel", "c"):
+                    self.add_message("❌ Cancelled.", False, save_to_db=False)
+                    self.pending_file_action = None
+                else:
+                    self.add_message("❌ Type open, rename, move, or cancel", False, save_to_db=False)
+                self._re_enable()
+                return
+
+        # ─────────────────────────────────────────────────────────────────────
+        # NEW ADVANCED COMMAND (no pending state)
+        # ─────────────────────────────────────────────────────────────────────
+        result = handle_advanced_file_command(text, self.current_session_id)
+        status = result.get("status")
+
+        if status == "success":
+            self.add_message(result["message"], False, save_to_db=False)
+
+        elif status == "error":
+            self.add_message(result["message"], False, save_to_db=False)
+
+        elif status in ("need_info", "need_new_name", "need_search_info"):
+            pending = result.get("pending", {})
+            pending["state"] = status
+            self.pending_file_action = pending
+            self.add_message(result["message"], False, save_to_db=False)
+
+        elif status == "need_rename_location":
+            pending = result.get("pending", {})
+            pending["state"] = "need_rename_location"
+            self.pending_file_action = pending
+            self.add_message(result["message"], False, save_to_db=False)
+
+        elif status == "move_search":
+            pending = result.get("pending", {})
+            files_to_find = pending.get("files", [])
+            destination = pending.get("destination")
+
+            self.add_message("🔍 Searching for file(s) to move...", False, save_to_db=False)
+            groups = search_grouped(files_to_find, use_smart=True)
+            self._remove_last_ai_bubble()
+
+            result_state = finish_grouped_move(groups, destination)
+            if result_state == "need_location":
+                pending["state"] = "need_move_location"
+                self.pending_file_action = pending
+
+        elif status == "need_destination":
+            pending = result.get("pending", {})
+            pending["state"] = "need_destination"
+            self.pending_file_action = pending
+            self.add_message(result["message"], False, save_to_db=False)
+
+        elif status == "need_search_location":
+            pending = result.get("pending", {})
+            pending["state"] = "need_search_location"
+            self.pending_file_action = pending
+            self.add_message(result["message"], False, save_to_db=False)
+
+        elif status == "not_advanced":
+            mode = self.get_selected_mode()
+            self.add_message("🔍 Routing...", False, save_to_db=False)
+            self.router_worker = RouterWorker(text, mode)
+            self.router_worker.finished.connect(
+                lambda is_file: self._after_routing(text, mode, is_file)
+            )
+            self.router_worker.error.connect(
+                lambda _: self._after_routing(text, mode, False)
+            )
+            self.router_worker.start()
+            return
+
+        self._re_enable()
+
+    def _remove_last_ai_bubble(self):
+        """Remove the last AI message bubble (e.g. 'Searching…' placeholders)."""
+        idx = self.chat_layout.count() - 2
+        if idx >= 0:
+            item = self.chat_layout.itemAt(idx)
+            if item and item.widget():
+                item.widget().deleteLater()
+
+    def _re_enable(self):
+        """Re-enable input after sync operations."""
+        self.input.setEnabled(True)
+        self.send_btn.setEnabled(True)
+        self.input.setFocus()
 
     def _after_routing(self, text: str, mode: str, is_file_op: bool):
         """Called by RouterWorker once intent is classified."""
@@ -735,6 +1222,7 @@ class ChatWindow(QWidget):
 
     def on_mic_click(self):
         from gui.speech_popup import SpeechPopup
+
         if self._speech_popup is None:
             self._speech_popup = SpeechPopup(self, whisper_model_dir="models/whisper")
             self._speech_popup.text_ready.connect(self._on_voice_text)
@@ -745,7 +1233,8 @@ class ChatWindow(QWidget):
         self.add_message(
             "🎤 Voice input coming soon! "
             "When ready, speech will route through the same pipeline as typed messages.",
-            False, save_to_db=False
+            False,
+            save_to_db=False,
         )
 
     def on_file_upload(self):
@@ -784,10 +1273,7 @@ class ChatWindow(QWidget):
             file_type = safe_filename.split(".")[-1].lower()
 
             self.file_worker = FileProcessorWorker(
-                self.current_session_id,
-                dest_path,
-                file_type,
-                filename
+                self.current_session_id, dest_path, file_type, filename
             )
             self.file_worker.progress.connect(self.on_file_progress)
             self.file_worker.status_update.connect(self.on_file_status_update)
