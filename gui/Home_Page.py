@@ -1,6 +1,6 @@
 # gui/Home_Page.py
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox, QMessageBox
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QFrame, QScrollArea, QCheckBox, QMessageBox, QSizePolicy
 )
 from PySide6.QtGui import QPixmap, QIcon, QPainter, QPainterPath, QColor
 from PySide6.QtCore import QSize, Qt, Signal, QTimer
@@ -119,6 +119,7 @@ class HomePage(QWidget):
         self.chat_scroll = QScrollArea()
         self.chat_scroll.setWidgetResizable(True)
         self.chat_scroll.setObjectName("modernScroll")
+        self.chat_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff) 
         
         chat_content = QWidget()
         chat_content.setObjectName("transparentBg")
@@ -150,6 +151,7 @@ class HomePage(QWidget):
         self.task_scroll = QScrollArea()
         self.task_scroll.setWidgetResizable(True)
         self.task_scroll.setObjectName("modernScroll")
+        self.task_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         self.task_content = QWidget()
         self.task_content.setObjectName("transparentBg")
@@ -234,9 +236,10 @@ class HomePage(QWidget):
                 btn = QPushButton(f"  {title}")
                 btn.setObjectName("chatRow")
                 btn.setFixedHeight(50)
+                btn.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
                 btn.setCursor(Qt.PointingHandCursor)
                 btn.clicked.connect(lambda checked, sid=session_id: self.open_chat_session(sid))
-                row_layout.addWidget(btn)
+                row_layout.addWidget(btn, 1)
                 
                 # Delete button (X)
                 delete_btn = QPushButton("✕")
@@ -281,6 +284,7 @@ class HomePage(QWidget):
         ))
         t_lbl = QLabel(str(title))
         t_lbl.setObjectName("itemTitle")
+        t_lbl.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         
         try:
             clean_date = datetime.strptime(task_date, '%Y-%m-%d').strftime('%b %d')
@@ -460,52 +464,52 @@ class HomePage(QWidget):
                 }
                 
                 QWidget#chatRowContainer {
-    background: rgba(30, 41, 59, 0.4);
-    border-radius: 16px;
-    border: 1px solid rgba(71, 85, 105, 0.3);
-}
-QWidget#chatRowContainer:hover {
-    background: rgba(139, 92, 246, 0.1);
-    border: 1px solid rgba(139, 92, 246, 0.4);
-}
+                    background: rgba(30, 41, 59, 0.4);
+                    border-radius: 16px;
+                    border: 1px solid rgba(71, 85, 105, 0.3);
+                }
+                QWidget#chatRowContainer:hover {
+                    background: rgba(139, 92, 246, 0.1);
+                    border: 1px solid rgba(139, 92, 246, 0.4);
+                }
 
-QPushButton#chatRow {
-    background: transparent;
-    border: none;
-    border-top-left-radius: 16px;
-    border-bottom-left-radius: 16px;
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
-    text-align: left;
-    padding: 12px;
-    color: #E2E8F0;
-    font-weight: 600;
-    font-size: 15px;
-}
-QPushButton#chatRow:hover {
-    background: transparent;
-}
+                QPushButton#chatRow {
+                    background: transparent;
+                    border: none;
+                    border-top-left-radius: 16px;
+                    border-bottom-left-radius: 16px;
+                    border-top-right-radius: 0px;
+                    border-bottom-right-radius: 0px;
+                    text-align: left;
+                    padding: 12px;
+                    color: #E2E8F0;
+                    font-weight: 600;
+                    font-size: 15px;
+                }
+                QPushButton#chatRow:hover {
+                    background: transparent;
+                }
 
-QPushButton#chatDeleteBtn {
-    background: transparent;
-    border: none;
-    border-left: 1px solid rgba(71, 85, 105, 0.3);
-    border-top-right-radius: 16px;
-    border-bottom-right-radius: 16px;
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
-    color: rgba(248, 113, 113, 0.6);
-    font-weight: bold;
-    font-size: 16px;
-}
-QPushButton#chatDeleteBtn:hover {
-    background: rgba(220, 38, 38, 0.25);
-    color: #FCA5A5;
-    border-left: 1px solid rgba(220, 38, 38, 0.4);
-}
-QPushButton#chatDeleteBtn:pressed {
-    background: rgba(220, 38, 38, 0.4);
-}
+                QPushButton#chatDeleteBtn {
+                    background: transparent;
+                    border: none;
+                    border-left: 1px solid rgba(71, 85, 105, 0.3);
+                    border-top-right-radius: 16px;
+                    border-bottom-right-radius: 16px;
+                    border-top-left-radius: 0px;
+                    border-bottom-left-radius: 0px;
+                    color: rgba(248, 113, 113, 0.6);
+                    font-weight: bold;
+                    font-size: 16px;
+                }
+                QPushButton#chatDeleteBtn:hover {
+                    background: rgba(220, 38, 38, 0.25);
+                    color: #FCA5A5;
+                    border-left: 1px solid rgba(220, 38, 38, 0.4);
+                }
+                QPushButton#chatDeleteBtn:pressed {
+                    background: rgba(220, 38, 38, 0.4);
+                }
                 
                 QWidget#taskRow {
                     background: rgba(30, 41, 59, 0.4);
@@ -663,52 +667,52 @@ QPushButton#chatDeleteBtn:pressed {
                 }
                 
                 QWidget#chatRowContainer {
-    background: rgba(255, 255, 255, 0.85);
-    border-radius: 16px;
-    border: 1.5px solid rgba(226, 232, 240, 0.8);
-}
-QWidget#chatRowContainer:hover {
-    background: rgba(245, 243, 255, 0.9);
-    border: 1.5px solid rgba(139, 92, 246, 0.3);
-}
+                    background: rgba(255, 255, 255, 0.85);
+                    border-radius: 16px;
+                    border: 1.5px solid rgba(226, 232, 240, 0.8);
+                }
+                QWidget#chatRowContainer:hover {
+                    background: rgba(245, 243, 255, 0.9);
+                    border: 1.5px solid rgba(139, 92, 246, 0.3);
+                }
 
-QPushButton#chatRow {
-    background: transparent;
-    border: none;
-    border-top-left-radius: 16px;
-    border-bottom-left-radius: 16px;
-    border-top-right-radius: 0px;
-    border-bottom-right-radius: 0px;
-    text-align: left;
-    padding: 12px;
-    color: #1E293B;
-    font-weight: 600;
-    font-size: 15px;
-}
-QPushButton#chatRow:hover {
-    background: transparent;
-}
+                QPushButton#chatRow {
+                    background: transparent;
+                    border: none;
+                    border-top-left-radius: 16px;
+                    border-bottom-left-radius: 16px;
+                    border-top-right-radius: 0px;
+                    border-bottom-right-radius: 0px;
+                    text-align: left;
+                    padding: 12px;
+                    color: #1E293B;
+                    font-weight: 600;
+                    font-size: 15px;
+                }
+                QPushButton#chatRow:hover {
+                    background: transparent;
+                }
 
-QPushButton#chatDeleteBtn {
-    background: transparent;
-    border: none;
-    border-left: 1px solid rgba(226, 232, 240, 0.8);
-    border-top-right-radius: 16px;
-    border-bottom-right-radius: 16px;
-    border-top-left-radius: 0px;
-    border-bottom-left-radius: 0px;
-    color: rgba(185, 28, 28, 0.5);
-    font-weight: bold;
-    font-size: 16px;
-}
-QPushButton#chatDeleteBtn:hover {
-    background: rgba(254, 226, 226, 0.7);
-    color: #991B1B;
-    border-left: 1px solid rgba(220, 38, 38, 0.3);
-}
-QPushButton#chatDeleteBtn:pressed {
-    background: rgba(220, 38, 38, 0.3);
-}
+                QPushButton#chatDeleteBtn {
+                    background: transparent;
+                    border: none;
+                    border-left: 1px solid rgba(226, 232, 240, 0.8);
+                    border-top-right-radius: 16px;
+                    border-bottom-right-radius: 16px;
+                    border-top-left-radius: 0px;
+                    border-bottom-left-radius: 0px;
+                    color: rgba(185, 28, 28, 0.5);
+                    font-weight: bold;
+                    font-size: 16px;
+                }
+                QPushButton#chatDeleteBtn:hover {
+                    background: rgba(254, 226, 226, 0.7);
+                    color: #991B1B;
+                    border-left: 1px solid rgba(220, 38, 38, 0.3);
+                }
+                QPushButton#chatDeleteBtn:pressed {
+                    background: rgba(220, 38, 38, 0.3);
+                }
                 
                 QWidget#taskRow {
                     background: rgba(255, 255, 255, 0.8);
