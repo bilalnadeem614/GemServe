@@ -643,6 +643,100 @@ class ChatWindow(QWidget):
             return
 
         # ─────────────────────────────────────────────
+        # HANDLE PENDING FILE CREATION LOCATION
+        # ─────────────────────────────────────────────
+        if self.pending_file_action:
+            action = self.pending_file_action.get("action")
+            state = self.pending_file_action.get("state", "")
+
+            # SAVE LOCATION SELECTION
+            if action == "create_file" and state == "need_save_location":
+
+                choice = text.strip()
+
+                user_profile = os.environ.get("USERPROFILE", "")
+
+                location_map = {
+                    "1": os.path.join(user_profile, "Desktop"),
+                    "2": os.path.join(user_profile, "Documents"),
+                    "3": os.path.join(user_profile, "Downloads"),
+                }
+
+                if choice in location_map:
+                    save_location = location_map[choice]
+                else:
+                    save_location = choice
+
+                pending = self.pending_file_action
+
+                from services.file_creator_service import (
+                    create_csv,
+                    create_xlsx,
+                    create_docx,
+                    create_pdf,
+                )
+
+                file_type = pending.get("file_type")
+                filename = pending.get("filename")
+                headers = pending.get("headers", [])
+                rows = pending.get("rows", [])
+                content = pending.get("content")
+                title = pending.get("title")
+
+                # CREATE FILE
+                if file_type == "csv":
+                    result = create_csv(
+                        filename,
+                        headers,
+                        rows,
+                        save_location,
+                    )
+
+                elif file_type == "xlsx":
+                    result = create_xlsx(
+                        filename,
+                        headers,
+                        rows,
+                        title,
+                        save_location,
+                    )
+
+                elif file_type == "docx":
+                    result = create_docx(
+                        filename,
+                        content,
+                        title,
+                        headers,
+                        rows,
+                        save_location,
+                    )
+
+                elif file_type == "pdf":
+                    result = create_pdf(
+                        filename,
+                        content,
+                        title,
+                        headers,
+                        rows,
+                        save_location,
+                    )
+
+                else:
+                    result = {
+                        "status": "error",
+                        "message": f"❌ Unsupported file type: {file_type}"
+                    }
+
+                self.add_message(
+                    result["message"],
+                    False,
+                    save_to_db=False,
+                )
+
+                self.pending_file_action = None
+                self._re_enable()
+                return
+        # ─────────────────────────────────────────────
         # 4. STRUCTURED FILE CREATION (docx/xlsx/csv/pdf)
         # ─────────────────────────────────────────────
         from services.file_creator_service import (
@@ -652,6 +746,10 @@ class ChatWindow(QWidget):
 
         if is_file_creation_request(text):
             result = handle_file_creation(text)
+            if result.get("status") == "need_save_location":
+                pending = result.get("pending", {})
+                pending["state"] = "need_save_location"
+                self.pending_file_action = pending
             self.add_message(result["message"], False, save_to_db=False)
             self.input.setEnabled(True)
             self.send_btn.setEnabled(True)
@@ -1105,6 +1203,7 @@ class ChatWindow(QWidget):
                     self.add_message("❌ Type open, rename, move, or cancel", False, save_to_db=False)
                 self._re_enable()
                 return
+
 
         # ─────────────────────────────────────────────────────────────────────
         # NEW ADVANCED COMMAND (no pending state)
