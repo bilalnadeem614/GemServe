@@ -675,11 +675,80 @@ class ChatWindow(QWidget):
             return
 
         # ─────────────────────────────────────────────
-        # HANDLE PENDING FILE CREATION LOCATION
+        # HANDLE PENDING FILE ACTIONS
         # ─────────────────────────────────────────────
         if self.pending_file_action:
             action = self.pending_file_action.get("action")
             state = self.pending_file_action.get("state", "")
+
+            # TAG SELECTION FROM MULTIPLE MATCHES
+            if action == "tag_select" and state == "await_choice":
+                choice = text.strip().lower()
+                if choice in ("cancel", "c"):
+                    self.add_message("❌ Tagging cancelled.", False, save_to_db=False)
+                    self.pending_file_action = None
+                    self._re_enable()
+                    return
+
+                try:
+                    idx = int(choice) - 1
+                    files = self.pending_file_action.get("files", [])
+                    if idx < 0 or idx >= len(files):
+                        raise ValueError
+
+                    file_path = files[idx]
+                    tag_action = self.pending_file_action.get("tag_action")
+                    tags = self.pending_file_action.get("tags", [])
+
+                    from db.tag_db_json import save_tags, get_tags
+                    from services.file_tag_service import auto_generate_tags
+
+                    if tag_action == "manual_tag":
+                        if not tags:
+                            self.add_message("❌ No tags to save.", False, save_to_db=False)
+                        else:
+                            save_tags(file_path, tags, source="user")
+                            self.add_message(
+                                f"✅ Tags added!\n\n📄 File: {os.path.basename(file_path)}\n🏷️ Tags: {', '.join(tags)}",
+                                False,
+                                save_to_db=False,
+                            )
+
+                    elif tag_action == "auto_tag":
+                        generated_tags = auto_generate_tags(file_path)
+                        if not generated_tags:
+                            self.add_message(
+                                "⚠️ No tags could be generated for this file.",
+                                False,
+                                save_to_db=False,
+                            )
+                        else:
+                            save_tags(file_path, generated_tags, source="auto")
+                            self.add_message(
+                                f"✅ Auto tags generated!\n\n📄 File: {os.path.basename(file_path)}\n🏷️ Tags: {', '.join(generated_tags)}",
+                                False,
+                                save_to_db=False,
+                            )
+
+                    elif tag_action == "show_tags":
+                        current_tags = get_tags(file_path)
+                        self.add_message(
+                            f"🏷️ Tags for {os.path.basename(file_path)}:\n\n{', '.join(current_tags) if current_tags else 'No tags found'}",
+                            False,
+                            save_to_db=False,
+                        )
+
+                    else:
+                        self.add_message("❌ Unknown tag action.", False, save_to_db=False)
+
+                    self.pending_file_action = None
+                    self._re_enable()
+                    return
+
+                except ValueError:
+                    self.add_message("❌ Enter a valid number or 'cancel'", False, save_to_db=False)
+                    self._re_enable()
+                    return
 
             # SAVE LOCATION SELECTION
             if action == "create_file" and state == "need_save_location":
@@ -706,6 +775,7 @@ class ChatWindow(QWidget):
                     create_xlsx,
                     create_docx,
                     create_pdf,
+                    create_txt,
                 )
 
                 file_type = pending.get("file_type")
@@ -750,6 +820,13 @@ class ChatWindow(QWidget):
                         title,
                         headers,
                         rows,
+                        save_location,
+                    )
+
+                elif file_type == "txt":
+                    result = create_txt(
+                        filename,
+                        content,
                         save_location,
                     )
 
@@ -803,7 +880,49 @@ class ChatWindow(QWidget):
         ):
             self._handle_advanced_file(text)
             return
+        # ─────────────────────────────────────────────
+        # FILE TAGGING
+        # ─────────────────────────────────────────────
+        from services.file_tag_service import (
+            is_file_tag_command,
+            handle_file_tag_command,
+        )
 
+        if is_file_tag_command(text):
+            from services.file_advanced_service import search_in_location
+            from db.tag_db_json import save_tags, get_tags
+
+            def find_file_func(filename):
+                result = search_in_location(filename, None, mode="regex")
+                return result.get("files", [])
+
+            def save_tags_func(file_path, tags, source="user"):
+                save_tags(file_path, tags, source=source)
+
+            def get_tags_func(file_path):
+                return get_tags(file_path)
+
+            result = handle_file_tag_command(
+                text,
+                find_file_func,
+                save_tags_func,
+                get_tags_func,
+            )
+
+            if result.get("status") == "select":
+                self.pending_file_action = {
+                    "action": "tag_select",
+                    "state": "await_choice",
+                    "files": result["data"]["files"],
+                    "tag_action": result["data"].get("action"),
+                    "tags": result["data"].get("tags", []),
+                }
+
+            self.add_message(result["message"], False, save_to_db=False)
+            self.input.setEnabled(True)
+            self.send_btn.setEnabled(True)
+            self.input.setFocus()
+            return
         # ─────────────────────────────────────────────
         # 6. WEB SEARCH
         # ─────────────────────────────────────────────
@@ -817,22 +936,21 @@ class ChatWindow(QWidget):
             return
 
         # ─────────────────────────────────────────────
-        # 7. FILE OPERATION MODE (pending actions)
+        # 7. LLM FILE OPERATION PENDING REPLY
         # ─────────────────────────────────────────────
-        if self.file_operation_mode:
-            if self.pending_file_action:
-                self.handle_file_operation(text)
-                self.input.setEnabled(True)
-                self.send_btn.setEnabled(True)
-                self.input.setFocus()
-                return
+        if self.pending_file_action and self.pending_file_action.get("operation"):
+            self.handle_file_operation(text)
+            self.input.setEnabled(True)
+            self.send_btn.setEnabled(True)
+            self.input.setFocus()
+            return
 
         # ─────────────────────────────────────────────
         # 8. ROUTE via LLM (file op vs normal chat)
         # ─────────────────────────────────────────────
         mode = self.get_selected_mode()
 
-        self.add_message("🔍 Routing...", False, save_to_db=False)
+        self.add_message("Routing...", False, save_to_db=False)
         self.router_worker = RouterWorker(text, mode)
         self.router_worker.finished.connect(
             lambda is_file: self._after_routing(text, mode, is_file)

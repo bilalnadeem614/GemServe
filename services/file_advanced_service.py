@@ -559,8 +559,8 @@ import re
 import json
 import string
 from pathlib import Path
-from services.llm_service import _call_ollama
-from utils.config import OLLAMA_FAST_MODEL
+# from services.llm_service import _call_ollama
+# from utils.config import OLLAMA_FAST_MODEL
 
 # ─────────────────────────────────────────────────────────────
 # HELPERS
@@ -708,89 +708,95 @@ def search_regex(filename: str, location: str = None, max_depth: int = 15) -> di
 # ─────────────────────────────────────────────────────────────
 
 
-def search_llm_guided(filename: str, location: str = None) -> dict:
-    """LLM suggests likely paths, then regex confirms. Falls back to full regex."""
-    norm_loc = _normalise_location(location) if location else None
+def parse_advanced_intent(text: str) -> dict:
+    """Pure regex intent parser (NO LLM)."""
 
-    prompt = (
-        f"You are a Windows file system expert.\n"
-        f'User is looking for a file named: "{filename}"\n'
-        f'Search location hint: {norm_loc if norm_loc else "anywhere"}\n\n'
-        f"List up to 6 most likely FULL folder paths on Windows where this file might be.\n"
-        f"Reply ONLY with a JSON array of strings.\n"
-        f'Example: ["C:\\\\Users\\\\Name\\\\Desktop", "C:\\\\Users\\\\Name\\\\Documents"]\n\n'
-        f"Paths:"
-    )
+    t = text.lower().strip()
 
-    likely_paths = []
-    try:
-        response = _call_ollama(prompt, OLLAMA_FAST_MODEL, timeout=15).strip()
-        m = re.search(r"\[.*?\]", response, re.DOTALL)
-        if m:
-            raw = json.loads(m.group())
-            likely_paths = [p for p in raw if isinstance(p, str) and os.path.exists(p)]
-    except Exception as e:
-        print(f"⚠️ LLM search guidance failed: {e}")
+    base = {
+        "action": "none",
+        "files": [],
+        "new_names": [],
+        "destination": None,
+        "location": None,
+        "search_mode": "regex",
+        "source": "regex",
+    }
 
-    user_name, user_ext = os.path.splitext(filename.lower())
-    user_norm = user_name.replace("_", " ").replace("-", " ")
-    matches = []
+    # ───────── RENAME ─────────
+    if re.search(r"\b(rename|change name)\b", t):
+        pairs = re.findall(r"(\S+\.\w+)\s+to\s+(\S+\.\w+)", t)
+        if pairs:
+            return {
+                **base,
+                "action": "rename",
+                "files": [p[0] for p in pairs],
+                "new_names": [p[1] for p in pairs],
+            }
 
-    # If location given, restrict LLM paths to within it
-    if norm_loc:
-        likely_paths = [p for p in likely_paths if p.startswith(norm_loc)] or [norm_loc]
+        single = re.search(r"rename\s+(\S+)\s+to\s+(\S+)", t)
+        if single:
+            return {
+                **base,
+                "action": "rename",
+                "files": [single.group(1)],
+                "new_names": [single.group(2)],
+            }
 
-    for path in likely_paths:
-        try:
-            for root, dirs, files in os.walk(path):
-                for f in files:
-                    if _file_matches(f, user_name, user_ext, user_norm):
-                        full = os.path.join(root, f)
-                        if full not in matches:
-                            matches.append(full)
-        except (PermissionError, OSError):
-            continue
+        return {**base, "action": "rename"}
 
-    if matches:
-        loc_str = norm_loc if norm_loc else "LLM-suggested paths"
+    # ───────── MOVE ─────────
+    if re.search(r"\b(move|transfer)\b", t):
+        dest = None
+
+        dest_match = re.search(
+            r"\bto\s+([A-Za-z]:\\[^\s]+|desktop|documents|downloads)",
+            t
+        )
+        if dest_match:
+            dest = dest_match.group(1)
+
+        files = re.findall(r"\b[\w\-]+\.\w+\b", t)
+
         return {
-            "status": "found",
-            "files": matches,
-            "count": len(matches),
-            "message": f"🧠 Found {len(matches)} file(s) via AI guidance",
+            **base,
+            "action": "move",
+            "files": files,
+            "destination": dest,
         }
 
-    # Fallback to regex
-    print("⚠️ LLM-guided search found nothing — falling back to regex")
-    return search_regex(filename, location)
+    # ───────── SEARCH ─────────
+    if re.search(r"\b(search|find|locate|look for)\b", t):
 
+        file_match = re.search(r"([\w\-. ]+\.\w+)", t)
+        filename = file_match.group(1) if file_match else None
+
+        loc = None
+
+        drive_match = re.search(r"([a-z])\s*drive", t)
+        if drive_match:
+            loc = f"{drive_match.group(1).upper()}:\\"
+
+        folder_match = re.search(r"(desktop|documents|downloads)", t)
+        if folder_match:
+            loc = folder_match.group(1)
+
+        return {
+            **base,
+            "action": "search_location",
+            "files": [filename] if filename else [],
+            "location": loc,
+        }
+
+    return base
 
 # ─────────────────────────────────────────────────────────────
 # UNIFIED SEARCH ENTRY POINT
 # ─────────────────────────────────────────────────────────────
 
 
-def search_in_location(
-    filename: str, location: str = None, mode: str = "regex"
-) -> dict:
-    """
-    Unified search.
-    mode: "regex" or "llm"
-    """
-    if not filename:
-        return {
-            "status": "error",
-            "files": [],
-            "count": 0,
-            "message": "❌ Filename is required for search.",
-        }
-
-    if location:
-        location = _normalise_location(location)
-
-    if mode == "llm":
-        return search_llm_guided(filename, location)
-
+def search_in_location(filename: str, location: str = None, mode: str = "regex") -> dict:
+    """Only regex search allowed."""
     return search_regex(filename, location)
 
 
@@ -828,36 +834,90 @@ User message: "{message}"
 JSON:"""
 
 
-def parse_advanced_intent(text: str) -> dict:
-    """LLM intent parser with regex fallback."""
-    try:
-        prompt = _ADVANCED_INTENT_PROMPT.replace("{message}", text)
-        response = _call_ollama(prompt, OLLAMA_FAST_MODEL, timeout=15).strip()
+# def parse_advanced_intent(text: str) -> dict:
+#     """Pure regex intent parser (NO LLM)."""
 
-        try:
-            result = json.loads(response)
-        except Exception:
-            m = re.search(r"\{.*\}", response, re.DOTALL)
-            if m:
-                result = json.loads(m.group())
-            else:
-                raise ValueError("No JSON")
+#     t = text.lower().strip()
 
-        action = result.get("action", "none").lower()
-        if action in ("rename", "move", "search_location"):
-            return {
-                "action": action,
-                "files": result.get("files", []),
-                "new_names": result.get("new_names", []),
-                "destination": result.get("destination"),
-                "location": result.get("location"),
-                "search_mode": result.get("search_mode", "regex"),
-                "source": "llm",
-            }
-    except Exception as e:
-        print(f"⚠️ Advanced intent LLM failed: {e} — regex fallback")
+#     base = {
+#         "action": "none",
+#         "files": [],
+#         "new_names": [],
+#         "destination": None,
+#         "location": None,
+#         "search_mode": "regex",
+#         "source": "regex",
+#     }
 
-    return _regex_parse_advanced(text)
+#     # ───────── RENAME ─────────
+#     if re.search(r"\b(rename|change name)\b", t):
+#         pairs = re.findall(r"(\S+\.\w+)\s+to\s+(\S+\.\w+)", t)
+
+#         if pairs:
+#             return {
+#                 **base,
+#                 "action": "rename",
+#                 "files": [p[0] for p in pairs],
+#                 "new_names": [p[1] for p in pairs],
+#             }
+
+#         single = re.search(r"rename\s+(\S+)\s+to\s+(\S+)", t)
+#         if single:
+#             return {
+#                 **base,
+#                 "action": "rename",
+#                 "files": [single.group(1)],
+#                 "new_names": [single.group(2)],
+#             }
+
+#         return {**base, "action": "rename"}
+
+#     # ───────── MOVE ─────────
+#     if re.search(r"\b(move|transfer)\b", t):
+#         dest = None
+
+#         dest_match = re.search(
+#             r"\bto\s+([A-Za-z]:\\[^\s]+|desktop|documents|downloads)",
+#             t
+#         )
+#         if dest_match:
+#             dest = dest_match.group(1)
+
+#         files = re.findall(r"[\w\-. ]+\.\w+", t)
+
+#         return {
+#             **base,
+#             "action": "move",
+#             "files": files,
+#             "destination": dest,
+#         }
+
+#     # ───────── SEARCH ─────────
+#     if re.search(r"\b(search|find|locate|look for)\b", t):
+
+#         file_match = re.search(r"([\w\-. ]+\.\w+)", t)
+#         filename = file_match.group(1) if file_match else None
+
+#         loc = None
+
+#         # Drive (C drive → C:\)
+#         drive_match = re.search(r"([a-z])\s*drive", t)
+#         if drive_match:
+#             loc = f"{drive_match.group(1).upper()}:\\"
+
+#         # Folder names
+#         folder_match = re.search(r"(desktop|documents|downloads)", t)
+#         if folder_match:
+#             loc = folder_match.group(1)
+
+#         return {
+#             **base,
+#             "action": "search_location",
+#             "files": [filename] if filename else [],
+#             "location": loc,
+#         }
+
+#     return base
 
 
 def _regex_parse_advanced(text: str) -> dict:
@@ -895,63 +955,28 @@ def _regex_parse_advanced(text: str) -> dict:
             }
         return {**base, "action": "rename"}
 
-    # Move
+    
+    # ───────── MOVE ─────────
     if re.search(r"\b(move|transfer)\b", t):
-        dest_m = re.search(
-            r'\b(?:to|into|in)\s+["\']?([A-Za-z]:\\[^\s"\']*|["\'][^"\']+["\'])',
-            text,
-            re.I,
-        )
-        dest = dest_m.group(1).strip("\"'") if dest_m else None
-        file_list = re.findall(r"[\w\-. ]+\.\w{2,5}", t)
-        return {**base, "action": "move", "files": file_list, "destination": dest}
+        dest = None
 
-    # Search with location hint
-    has_search = bool(re.search(r"\b(search|find|locate|look for)\b", t))
-    has_loc_hint = bool(
-        re.search(
-            r"\b(in|on|at|inside|within)\b.{0,30}"
-            r"\b(drive|folder|directory|desktop|documents|downloads|pictures|videos|[A-Za-z]:\\)\b",
-            t,
-        )
-    )
-
-    if has_search and has_loc_hint:
-        loc = None
-        path_m = re.search(r"([A-Za-z]:\\[^\s]+)", text, re.I)
-        drive_m = re.search(r"\b([A-Za-z])\s+drive\b", t)
-        folder_m = re.search(
-            r"\b(desktop|documents|downloads|pictures|videos|music)\b", t
+        # Detect destination (supports Desktop, Documents, Downloads, paths)
+        dest_match = re.search(
+            r"\bto\s+([A-Za-z]:\\[^\s]+|desktop|documents|downloads|pictures|videos|music)",
+            t
         )
 
-        if path_m:
-            loc = path_m.group(1)
-        elif drive_m:
-            loc = f"{drive_m.group(1).upper()}:\\"
-        elif folder_m:
-            loc = folder_m.group(1)
+        if dest_match:
+            dest = dest_match.group(1)
 
-        # Extract filename
-        fname = None
-        fn_m = re.search(r"[\w\-. ]+\.\w{2,5}", t)
-        if fn_m:
-            fname = fn_m.group(0)
-        else:
-            w_m = re.search(
-                r"\b(?:search for|find|locate|look for)\s+([\w\-. ]+?)(?:\s+in|\s+on|\s+at|$)",
-                t,
-            )
-            if w_m:
-                fname = w_m.group(1).strip()
+        files = re.findall(r"[\w\-. ]+\.\w+", t)
 
         return {
             **base,
-            "action": "search_location",
-            "files": [fname] if fname else [],
-            "location": loc,
+            "action": "move",
+            "files": files,
+            "destination": dest,
         }
-
-    return base
 
 
 def is_advanced_file_command(text: str) -> bool:

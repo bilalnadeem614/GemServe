@@ -214,47 +214,15 @@ Answer:"""
 
 def is_file_operation_request(text: str, model: str = None) -> tuple[bool, float]:
     """
-    Use the selected LLM to classify whether the message is a file operation.
-    Falls back to regex instantly if LLM fails or times out.
+    Classify whether the message is a file operation using regex only.
+    Fast, deterministic, no LLM calls.
 
     Args:
         text  : user message
-        model : Ollama model name to use (from selected mode). If None, uses fast model.
+        model : (ignored) kept for backward compatibility
 
     Returns (is_file_op: bool, confidence: float)
     """
-    from utils.config import OLLAMA_FAST_MODEL
-
-    if model is None:
-        model = OLLAMA_FAST_MODEL
-
-    # Web search is handled by the chat router, not the file router.
-    if text.lower().strip().startswith("search web "):
-        return False, 0.0
-
-    # ── Early exit: message refers to already-uploaded/context file → always CHAT
-    _CONTEXT_RE = r"\b(this\s+file|the\s+file|uploaded\s+file|this\s+document|the\s+document|this\s+pdf|the\s+pdf|my\s+upload)\b"
-    if re.search(_CONTEXT_RE, text.lower()):
-        return False, 0.0
-
-    # ── Try LLM classification first ─────────────────────────────────────────
-    try:
-        prompt = _ROUTE_PROMPT.replace("{message}", text)
-        response = _call_ollama(prompt, model, timeout=30).strip().upper()
-
-        # Accept any response containing FILE or CHAT
-        if "FILE" in response:
-            return True, 0.95
-        if "CHAT" in response:
-            return False, 0.0
-
-        # Ambiguous response — fall through to regex
-        print(f"⚠️ Ambiguous routing response: '{response}' — using regex fallback")
-
-    except Exception as e:
-        print(f"⚠️ LLM routing failed: {e} — using regex fallback")
-
-    # ── Regex fallback ────────────────────────────────────────────────────────
     return _regex_is_file_op(text)
 
 
@@ -398,9 +366,9 @@ def parse_user_intent(text: str) -> dict:
 def handle_llm_file_command(user_prompt: str, session_id=None) -> dict:
     """
     Interpret a natural language file request and execute the appropriate
-    file_service function. Uses LLM for intent parsing with regex fallback.
+    file_service function. Uses regex-only for deterministic intent parsing.
     """
-    intent = _llm_parse_intent(user_prompt)
+    intent = _regex_parse_intent(user_prompt)
     action = intent["action"]
     filename = intent["filename"]
 
