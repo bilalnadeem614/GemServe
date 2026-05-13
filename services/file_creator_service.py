@@ -680,6 +680,19 @@ def is_file_creation_request(text: str) -> bool:
     t = text.lower()
     has_create = bool(re.search(r"\b(create|make|generate|new)\b", t))
     has_type = bool(re.search(r"\b(txt|docx|xlsx|csv|pdf|notepad|word doc|word document|excel|spreadsheet)\b", t))
+
+    # If the user explicitly names multiple files, treat this as a general file operation
+    # request rather than the single-file structured creator.
+    raw_filenames = re.findall(r"\b[\w\-. ]+?\.(?:docx|xlsx|csv|pdf|txt)\b", text, re.I)
+    filenames = []
+    for raw in raw_filenames:
+        raw = raw.strip()
+        clean = re.sub(r"^(?:create|make|generate|new|and|or|file|document|the|a)\s+", "", raw, flags=re.I).strip()
+        if clean:
+            filenames.append(clean)
+    if len(filenames) > 1:
+        return False
+
     return has_create and has_type
 
 

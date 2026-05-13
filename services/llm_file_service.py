@@ -68,15 +68,20 @@ def _llm_parse_intent(text: str) -> dict:
 
         action = result.get("action", "none").lower().strip()
         filename = result.get("filename")
+        filenames = result.get("filenames") or []
 
         # Normalise filename
         if filename and str(filename).lower() in ("null", "none", ""):
             filename = None
+        filtered = [f for f in (filenames or []) if f and str(f).lower() not in ("null", "none", "")]
+        if not filtered and filename:
+            filtered = [filename]
 
         if action in ("open", "delete", "create", "search"):
             return {
                 "action": action,
                 "filename": filename,
+                "filenames": filtered,
                 "confidence": 0.9,
                 "source": "llm",
             }
@@ -110,7 +115,8 @@ def _regex_parse_intent(text: str) -> dict:
     else:
         action = "unknown"
 
-    filename = _extract_filename(text)
+    filenames = _extract_filenames(text)
+    filename = filenames[0] if filenames else _extract_filename(text)
     confidence = (
         0.9
         if (action != "unknown" and filename)
@@ -120,13 +126,70 @@ def _regex_parse_intent(text: str) -> dict:
     return {
         "action": action,
         "filename": filename,
+        "filenames": filenames,
         "confidence": confidence,
         "source": "regex",
     }
 
 
+def _extract_filenames(text: str) -> list[str]:
+    """Extract one or more filename tokens from the user text."""
+    results = []
+
+    # Split by conjunctions and separators to keep filename segments clean.
+    segments = re.split(r"\band\b|\bor\b|,|;|\n", text, flags=re.I)
+    for segment in segments:
+        for candidate in re.findall(r"[\w\-. ]+?\.\w{2,5}", segment):
+            clean = candidate.strip()
+            clean = re.sub(
+                r"^.*\b(?:open|delete|remove|trash|erase|create|make|find|search|locate|look\s+for|where\s+is|where\s+are|show|view|display|launch|start|access|load)\s+",
+                "",
+                clean,
+                flags=re.I,
+            )
+            clean = re.sub(
+                r"^.*\b(?:open|delete|remove|trash|erase|create|make|find|search|locate|look\s+for|where\s+is|where\s+are|show|view|display|launch|start|access|load)\s+",
+                "",
+                clean,
+                flags=re.I,
+            )
+            clean = re.sub(
+                r"^(?:open|delete|remove|trash|erase|create|make|find|search|locate|look\s+for|where\s+is|where\s+are|show|view|display|launch|start|access|load)\s+",
+                "",
+                clean,
+                flags=re.I,
+            )
+            clean = re.sub(
+                r"^(?:(?:the|my|a|an|file|document|called|named|titled)\s+)+",
+                "",
+                clean,
+                flags=re.I,
+            ).strip()
+            # Capture the final filename token in case the candidate includes extra words.
+            all_matches = re.findall(r"[\w\-. ]+?\.\w{2,5}", clean)
+            if all_matches:
+                clean = all_matches[-1].strip()
+            if not clean:
+                continue
+            if clean.lower() in ("file", "document"):
+                continue
+            if clean not in results:
+                results.append(clean)
+
+    # If the above fails, fallback to quoted filename extraction.
+    if not results:
+        quoted = re.findall(r'["\']([^"\']+)["\']', text)
+        for item in quoted:
+            item = item.strip()
+            if item and re.search(r"\.\w{2,5}$", item) and item not in results:
+                results.append(item)
+
+    return results
+
+
 def _extract_filename(text: str) -> str | None:
     """Extract filename from text using regex strategies."""
+    # Strip leading action verb
     # Strip leading action verb
     cleaned = re.sub(
         r"^(?:open|delete|remove|trash|erase|create|make|find|search|locate|"
@@ -183,6 +246,7 @@ def _extract_filename(text: str) -> str | None:
 # LLM-based routing  — uses the currently selected model to classify intent
 # Falls back to regex if the model times out or returns garbage
 # ---------------------------------------------------------------------------
+import os
 
 _ROUTE_PROMPT = """Classify this message. Reply with ONLY one word: FILE or CHAT.
 
@@ -371,6 +435,7 @@ def handle_llm_file_command(user_prompt: str, session_id=None) -> dict:
     intent = _regex_parse_intent(user_prompt)
     action = intent["action"]
     filename = intent["filename"]
+    filenames = intent.get("filenames") or ([filename] if filename else [])
 
     if action == "none" or (intent["confidence"] < 0.6 and action == "unknown"):
         return {
@@ -387,7 +452,7 @@ def handle_llm_file_command(user_prompt: str, session_id=None) -> dict:
             "confidence": intent["confidence"],
         }
 
-    if not filename:
+    if not filenames:
         return {
             "status": "error",
             "message": (
@@ -400,6 +465,45 @@ def handle_llm_file_command(user_prompt: str, session_id=None) -> dict:
 
     # ---- OPEN ----
     if action == "open":
+        if len(filenames) > 1:
+            messages = []
+            ambiguous = []
+            missing = []
+            for name in filenames:
+                cache_matches = search_in_cache(session_id, name) if session_id else []
+                if cache_matches:
+                    if len(cache_matches) == 1:
+                        result = open_file(cache_matches[0], session_id)
+                        messages.append(result["message"])
+                        continue
+                    ambiguous.append((name, cache_matches))
+                    continue
+
+                files = _smart_find(name, session_id)
+                if not files:
+                    missing.append(name)
+                elif len(files) == 1:
+                    result = open_file(files[0], session_id)
+                    messages.append(result["message"])
+                else:
+                    ambiguous.append((name, files))
+
+            if missing:
+                return {
+                    "status": "error",
+                    "message": f"❌ Could not find: {', '.join(missing)}",
+                    "action": "open",
+                }
+            if ambiguous:
+                name, files = ambiguous[0]
+                return _multi_select_response(files[:20], "open", name)
+
+            return {
+                "status": "success",
+                "message": "\n\n".join(messages),
+                "action": "open",
+            }
+
         cache_matches = search_in_cache(session_id, filename) if session_id else []
         if cache_matches:
             if len(cache_matches) == 1:
@@ -429,6 +533,31 @@ def handle_llm_file_command(user_prompt: str, session_id=None) -> dict:
 
     # ---- DELETE ----
     elif action == "delete":
+        if len(filenames) > 1:
+            resolved = []
+            ambiguous = []
+            missing = []
+            for name in filenames:
+                files = _smart_find(name, session_id)
+                if not files:
+                    missing.append(name)
+                elif len(files) == 1:
+                    resolved.append(files[0])
+                else:
+                    ambiguous.append((name, files))
+
+            if missing:
+                return {
+                    "status": "error",
+                    "message": f"❌ Could not find: {', '.join(missing)}",
+                    "action": "delete",
+                }
+            if ambiguous:
+                name, files = ambiguous[0]
+                return _multi_select_response(files[:20], "delete", name)
+
+            return _delete_multi_confirm(resolved)
+
         cache_matches = search_in_cache(session_id, filename) if session_id else []
         if cache_matches:
             if len(cache_matches) == 1:
@@ -448,20 +577,42 @@ def handle_llm_file_command(user_prompt: str, session_id=None) -> dict:
 
     # ---- CREATE ----
     elif action == "create":
+        label = filenames[0] if len(filenames) == 1 else f"{len(filenames)} files"
         return {
             "status": "ask_location",
             "message": (
-                f"📝 Where should I create '{filename}'?\n\n"
-                "  1️⃣  Desktop (default)\n"
-                "  2️⃣  Custom path\n\n"
-                "Type 1, 2, or cancel"
+                f"📂 Where should I create {label}?\n\n"
+                "Options:\n"
+                "  1. Desktop (default)\n"
+                "  2. Documents\n"
+                "  3. Downloads\n"
+                "  4. Custom path (e.g., D:\\Projects)\n\n"
+                "Type 1, 2, 3, or a full path:"
             ),
             "action": "create",
-            "data": {"filename": filename, "operation": "create"},
+            "data": {"filenames": filenames, "operation": "create"},
         }
 
     # ---- SEARCH ----
     elif action == "search":
+        if len(filenames) > 1:
+            messages = []
+            for name in filenames:
+                files = _smart_find(name, session_id)
+                if not files:
+                    messages.append(f"❌ No files matching '{name}' found.")
+                    continue
+                files_list = "\n".join(f"  {i}. {f}" for i, f in enumerate(files[:20], 1))
+                extra = f"\n  … and {len(files) - 20} more" if len(files) > 20 else ""
+                messages.append(
+                    f"🔍 Found {len(files)} file(s) matching '{name}':\n\n{files_list}{extra}"
+                )
+            return {
+                "status": "success",
+                "message": "\n\n".join(messages),
+                "action": "search",
+            }
+
         files = _smart_find(filename, session_id)
         if not files:
             return {
@@ -496,6 +647,18 @@ def _delete_confirm(filepath: str) -> dict:
         "message": f"🗑️ Delete this file?\n📂 {filepath}\n\nType yes to confirm or no to cancel",
         "action": "delete",
         "data": {"files": [filepath], "operation": "delete"},
+    }
+
+
+def _delete_multi_confirm(filepaths: list) -> dict:
+    files_list = "\n".join(f"  {i}. {p}" for i, p in enumerate(filepaths, 1))
+    return {
+        "status": "confirm",
+        "message": (
+            f"🗑️ Delete these files?\n{files_list}\n\nType yes to confirm or no to cancel"
+        ),
+        "action": "delete",
+        "data": {"files": filepaths, "operation": "delete"},
     }
 
 
@@ -565,7 +728,27 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
 
     elif state == "delete_confirm":
         if r in ("yes", "y"):
-            result = delete_file(pending_action.get("file"))
+            files = pending_action.get("files") or [pending_action.get("file")]
+            if isinstance(files, list) and len(files) > 1:
+                results = []
+                success = 0
+                fail = 0
+                for fpath in files:
+                    result = delete_file(fpath)
+                    if result["status"] == "success":
+                        success += 1
+                    else:
+                        fail += 1
+                    results.append(f"{'✅' if result['status'] == 'success' else '❌'} {result['message']}")
+                return {
+                    "status": "success",
+                    "message": (
+                        f"📋 Delete results:\n\n✅ Success: {success}\n❌ Failed: {fail}\n\n" + "\n".join(results)
+                    ),
+                    "action": "delete",
+                    "handled": True,
+                }
+            result = delete_file(pending_action.get("file") or files[0])
             return {
                 "status": result["status"],
                 "message": result["message"],
@@ -585,16 +768,17 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
         }
 
     elif state == "location":
-        filename = pending_action.get("filename", "")
+        filenames = pending_action.get("filenames") or [pending_action.get("filename", "")]
         if r in ("1", "desktop"):
-            result = create_file(filename)
-            return {
-                "status": result["status"],
-                "message": result["message"],
-                "action": "create",
-                "handled": True,
-            }
-        elif r in ("2", "custom"):
+            save_path = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
+            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+        elif r in ("2", "documents"):
+            save_path = os.path.join(os.environ.get("USERPROFILE", ""), "Documents")
+            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+        elif r in ("3", "downloads"):
+            save_path = os.path.join(os.environ.get("USERPROFILE", ""), "Downloads")
+            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+        elif r in ("4", "custom", "custom path", "path"):
             return {
                 "status": "ask_custom_path",
                 "message": "📁 Enter the full path (or cancel):",
@@ -607,10 +791,17 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
                 "message": "❌ Creation cancelled.",
                 "handled": True,
             }
+        else:
+            # Accept direct full path input too
+            save_path = response_text.strip()
+            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+
+        messages = [result["message"] for result in results]
         return {
-            "status": "error",
-            "message": "❌ Please enter 1, 2, or cancel.",
-            "handled": False,
+            "status": "success",
+            "message": "\n\n".join(messages),
+            "action": "create",
+            "handled": True,
         }
 
     elif state == "custom_path":
@@ -620,12 +811,12 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
                 "message": "❌ Creation cancelled.",
                 "handled": True,
             }
-        result = create_file(
-            pending_action.get("filename", ""), custom_path=response_text.strip()
-        )
+        filenames = pending_action.get("filenames") or [pending_action.get("filename", "")]
+        results = [create_file(fname, custom_path=response_text.strip()) for fname in filenames]
+        messages = [result["message"] for result in results]
         return {
-            "status": result["status"],
-            "message": result["message"],
+            "status": "success",
+            "message": "\n\n".join(messages),
             "action": "create",
             "handled": True,
         }
