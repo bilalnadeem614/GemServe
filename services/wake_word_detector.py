@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import re
 import threading
 from datetime import datetime
 from typing import Any
@@ -50,6 +51,7 @@ class WakeWordDetector(QObject):
     """Detect wake words from transcribed audio."""
 
     wake_word_detected = Signal(str)
+    _WAKE_WORD_PATTERN = re.compile(r"\b(?:hi|hey|hello)\b", re.IGNORECASE)
 
     def __init__(
         self,
@@ -346,14 +348,12 @@ class WakeWordDetector(QObject):
             raise
 
         normalized_audio = np.asarray(audio_data, dtype=np.float32).flatten()
-        initial_prompt = "hey hello hi"
         segments, _ = model.transcribe(
             normalized_audio,
             language="en",
             beam_size=1,
             vad_filter=False,
             condition_on_previous_text=False,
-            initial_prompt=initial_prompt,
         )
         transcription = " ".join(segment.text for segment in segments).strip()
         self._log_debug("Model transcription finished at %s: %r", self._timestamp(), transcription)
@@ -369,5 +369,4 @@ class WakeWordDetector(QObject):
             True when the text contains "hi", "hey" or "hello" (case-insensitive),
             otherwise False.
         """
-        lowered = text.lower()
-        return "hi" in lowered or "hey" in lowered or "hello" in lowered
+        return bool(self._WAKE_WORD_PATTERN.search(text))
