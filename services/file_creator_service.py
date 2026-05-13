@@ -506,8 +506,8 @@ import os
 import re
 import json
 from pathlib import Path
-from services.llm_service import _call_ollama
-from utils.config import OLLAMA_FAST_MODEL
+# from services.llm_service import _call_ollama
+# from utils.config import OLLAMA_FAST_MODEL
 
 
 # ─────────────────────────────────────────────────────────────
@@ -595,28 +595,63 @@ JSON:"""
 
 
 def parse_file_creation_intent(text: str) -> dict:
-    """Use LLM to parse file creation intent with data."""
-    default = {
-        "filename": None, "file_type": None, "title": None,
-        "headers": [], "rows": [], "content": None, "location": None
+    """Pure regex-based parser (NO LLM)."""
+
+    t = text.lower()
+
+    result = {
+        "filename": None,
+        "file_type": None,
+        "title": None,
+        "headers": [],
+        "rows": [],
+        "content": None,
+        "location": None
     }
-    try:
-        prompt = _DATA_EXTRACT_PROMPT.replace("{message}", text)
-        response = _call_ollama(prompt, OLLAMA_FAST_MODEL, timeout=20).strip()
-        # Strip markdown fences if present
-        response = re.sub(r"```[a-z]*\n?", "", response).strip()
-        try:
-            result = json.loads(response)
-        except Exception:
-            m = re.search(r"\{.*\}", response, re.DOTALL)
-            if m:
-                result = json.loads(m.group())
-            else:
-                raise ValueError("No JSON")
-        return {**default, **result}
-    except Exception as e:
-        print(f"⚠️ File creation LLM parse failed: {e} — regex fallback")
-        return _regex_parse_creation(text)
+
+    # Detect file type
+    type_map = {
+        "txt": ["txt", "notepad"],
+        "docx": ["docx", "word", "word document"],
+        "xlsx": ["xlsx", "excel", "spreadsheet"],
+        "csv": ["csv"],
+        "pdf": ["pdf"]
+    }
+
+    for ftype, keywords in type_map.items():
+        if any(k in t for k in keywords):
+            result["file_type"] = ftype
+            break
+
+    # Extract filename
+    m = re.search(r"([\w\-]+\.(docx|xlsx|csv|pdf|txt))", text, re.I)
+    if m:
+        result["filename"] = m.group(1)
+
+    # Extract headers
+    col_match = re.search(r"columns?\s+(.+?)(?:rows?|$)", t)
+    if col_match:
+        result["headers"] = [
+            x.strip().capitalize()
+            for x in re.split(r"[,\s]+", col_match.group(1))
+            if x.strip()
+        ]
+
+    # Extract rows
+    row_match = re.search(r"rows?\s+(.+)", t)
+    if row_match:
+        raw_rows = row_match.group(1).split(",")
+        for r in raw_rows:
+            row = [x.strip() for x in r.split() if x.strip()]
+            if row:
+                result["rows"].append(row)
+
+    # Extract content (for docx/pdf)
+    content_match = re.search(r"(?:content|text|with)\s+(.+)", text, re.I)
+    if content_match:
+        result["content"] = content_match.group(1).strip()
+
+    return result
 
 
 def _regex_parse_creation(text: str) -> dict:
@@ -625,11 +660,11 @@ def _regex_parse_creation(text: str) -> dict:
         "filename": None, "file_type": None, "title": None,
         "headers": [], "rows": [], "content": None, "location": None
     }
-    for ext in ("docx", "xlsx", "csv", "pdf"):
-        if ext in t or {"docx": "word", "xlsx": "excel", "csv": "csv", "pdf": "pdf"}[ext] in t:
+    for ext in ("docx", "xlsx", "csv", "pdf", "txt"):
+        if ext in t or {"docx": "word", "xlsx": "excel", "csv": "csv", "pdf": "pdf", "txt": "txt"}[ext] in t:
             default["file_type"] = ext
             break
-    m = re.search(r"[\w\-]+\.(docx|xlsx|csv|pdf)", t)
+    m = re.search(r"[\w\-]+\.(docx|xlsx|csv|pdf|txt)", t)
     if m:
         default["filename"] = m.group(0)
     col_m = re.search(r"columns?\s+(.+?)(?:\s+(?:and\s+)?rows?|\s*$)", t)
@@ -644,7 +679,20 @@ def _regex_parse_creation(text: str) -> dict:
 def is_file_creation_request(text: str) -> bool:
     t = text.lower()
     has_create = bool(re.search(r"\b(create|make|generate|new)\b", t))
-    has_type = bool(re.search(r"\b(docx|xlsx|csv|pdf|word doc|word document|excel|spreadsheet)\b", t))
+    has_type = bool(re.search(r"\b(txt|docx|xlsx|csv|pdf|notepad|word doc|word document|excel|spreadsheet)\b", t))
+
+    # If the user explicitly names multiple files, treat this as a general file operation
+    # request rather than the single-file structured creator.
+    raw_filenames = re.findall(r"\b[\w\-. ]+?\.(?:docx|xlsx|csv|pdf|txt)\b", text, re.I)
+    filenames = []
+    for raw in raw_filenames:
+        raw = raw.strip()
+        clean = re.sub(r"^(?:create|make|generate|new|and|or|file|document|the|a)\s+", "", raw, flags=re.I).strip()
+        if clean:
+            filenames.append(clean)
+    if len(filenames) > 1:
+        return False
+
     return has_create and has_type
 
 
@@ -854,7 +902,23 @@ def create_pdf(filename: str, content: str = None, title: str = None,
     except Exception as e:
         return {"status": "error", "message": f"❌ Failed to create PDF: {str(e)}"}
 
-
+def create_txt(filename: str, content: str = "", save_path: str = None) -> dict:
+    try:
+        path = _resolve_path(filename, save_path)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content or "")
+        return {
+            "status": "success",
+            "message": (
+                f"✅ Text file created!\n\n"
+                f"📄 File: {filename}\n"
+                f"📂 Location: {path.parent}"
+            ),
+            "path": str(path)
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"❌ Failed to create TXT: {str(e)}"}
+    
 # ─────────────────────────────────────────────────────────────
 # MAIN HANDLER — ALWAYS ASKS LOCATION FIRST
 # ─────────────────────────────────────────────────────────────
@@ -882,7 +946,8 @@ def handle_file_creation(user_prompt: str) -> dict:
                 "  1. Word Document (.docx)\n"
                 "  2. Excel Spreadsheet (.xlsx)\n"
                 "  3. CSV File (.csv)\n"
-                "  4. PDF Document (.pdf)\n\n"
+                "  4. PDF Document (.pdf)\n"
+                "  5. Text Document (.txt)\n\n"
                 "Type the number or extension (e.g. xlsx):"
             ),
             "pending": {
@@ -898,7 +963,7 @@ def handle_file_creation(user_prompt: str) -> dict:
     # Build default filename if not given
     if not filename:
         ext_map = {"docx": "document.docx", "xlsx": "spreadsheet.xlsx",
-                   "csv": "data.csv", "pdf": "document.pdf"}
+                   "csv": "data.csv", "pdf": "document.pdf", "txt": "document.txt"}
         filename = ext_map.get(file_type, f"file.{file_type}")
 
     # Ensure correct extension
@@ -986,6 +1051,8 @@ def create_file_at_location(pending: dict, location_input: str) -> dict:
     elif file_type == "pdf":
         return create_pdf(filename, content, title,
                           headers or None, rows or None, save_path)
+    elif file_type == "txt":
+        return create_txt(filename, content, save_path)
     else:
         return {"status": "error", "message": f"❌ Unsupported file type: {file_type}"}
 

@@ -11,6 +11,7 @@ from gui.Chat_Bot import ChatWindow
 from services.notifier import start_scheduler
 from db import init_database
 from services.model_manager import ModelManager
+from db.tag_db_json import init_tag_db
 
 DATA_FILE = "user_data.json"
 
@@ -162,6 +163,7 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
     app = QApplication(sys.argv)
+    init_tag_db()
     start_scheduler()
     window = App()
     window.resize(900, 600)
