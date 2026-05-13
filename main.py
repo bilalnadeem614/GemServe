@@ -9,6 +9,7 @@ from gui.todo_page import TodoList
 from gui.Chat_Bot import ChatWindow
 from services.notifier import start_scheduler
 from db import init_database
+from db.tag_db_json import init_tag_db
 
 DATA_FILE = "user_data.json"
 
@@ -106,6 +107,7 @@ class App(QStackedWidget):
             
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    init_tag_db()
     start_scheduler()
     window = App()
     window.resize(900, 600)
