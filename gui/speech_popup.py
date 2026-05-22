@@ -30,7 +30,7 @@ from services.model_manager import ModelManager
 C_GRAD_TOP = QColor("#7C3AED")
 C_GRAD_BOT = QColor("#9D5CF6")
 
-SILENCE_SECONDS    = 3.0
+SILENCE_SECONDS    = 2.0
 SILENCE_RMS_THRESH = 0.01
 
 
