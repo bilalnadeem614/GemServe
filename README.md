@@ -261,10 +261,15 @@ GemServe/
 1. **File Management**
     ```bash
     open filename.ext (and filename.ext for multiple files)
+
     delete filename.ext
+    
     create filename.ext (and filename.ext for multiple files)
+    
     move filename.ext (and filename.ext  for multiple files) to folder
+    
     rename filename.ext to filename.ext 
+    
     search filename.ext
     ```
 2. **App Managemet**
@@ -473,17 +478,6 @@ The application automatically maintains user file history:
 - Document upload & RAG
 - Task management
 - Dark mode
-
-<!-- 
-### Planned Features (v1.1+)
-- [ ] Multi-user support with login
-- [ ] Cloud backup option
-- [ ] Plugin system for extensions
-- [ ] Keyboard shortcuts & hotkeys
-- [ ] Custom wake word training
-- [ ] Voice output (Text-to-Speech)
-- [ ] Web interface companion
-- [ ] Mobile app integration -->
 
 ---
 
