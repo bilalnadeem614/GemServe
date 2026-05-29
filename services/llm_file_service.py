@@ -115,8 +115,15 @@ def _regex_parse_intent(text: str) -> dict:
     else:
         action = "unknown"
 
+        # AFTER
     filenames = _extract_filenames(text)
-    filename = filenames[0] if filenames else _extract_filename(text)
+    # If segment-based extraction missed files, try whole-text extraction as fallback
+    if not filenames:
+        single = _extract_filename(text)
+        if single:
+            filenames = [single]
+    filename = filenames[0] if filenames else None
+    
     confidence = (
         0.9
         if (action != "unknown" and filename)
@@ -133,56 +140,47 @@ def _regex_parse_intent(text: str) -> dict:
 
 
 def _extract_filenames(text: str) -> list[str]:
-    """Extract one or more filename tokens from the user text."""
-    results = []
-
-    # Split by conjunctions and separators to keep filename segments clean.
+    """
+    Extract all filenames (with extensions) from user text.
+    Splits on conjunctions first, then extracts extension-bearing tokens.
+    """
+    # Split on 'and', 'or', commas, semicolons, newlines
     segments = re.split(r"\band\b|\bor\b|,|;|\n", text, flags=re.I)
-    for segment in segments:
-        for candidate in re.findall(r"[\w\-. ]+?\.\w{2,5}", segment):
-            clean = candidate.strip()
-            clean = re.sub(
-                r"^.*\b(?:open|delete|remove|trash|erase|create|make|find|search|locate|look\s+for|where\s+is|where\s+are|show|view|display|launch|start|access|load)\s+",
-                "",
-                clean,
-                flags=re.I,
-            )
-            clean = re.sub(
-                r"^.*\b(?:open|delete|remove|trash|erase|create|make|find|search|locate|look\s+for|where\s+is|where\s+are|show|view|display|launch|start|access|load)\s+",
-                "",
-                clean,
-                flags=re.I,
-            )
-            clean = re.sub(
-                r"^(?:open|delete|remove|trash|erase|create|make|find|search|locate|look\s+for|where\s+is|where\s+are|show|view|display|launch|start|access|load)\s+",
-                "",
-                clean,
-                flags=re.I,
-            )
-            clean = re.sub(
-                r"^(?:(?:the|my|a|an|file|document|called|named|titled)\s+)+",
-                "",
-                clean,
-                flags=re.I,
-            ).strip()
-            # Capture the final filename token in case the candidate includes extra words.
-            all_matches = re.findall(r"[\w\-. ]+?\.\w{2,5}", clean)
-            if all_matches:
-                clean = all_matches[-1].strip()
-            if not clean:
-                continue
-            if clean.lower() in ("file", "document"):
-                continue
-            if clean not in results:
-                results.append(clean)
 
-    # If the above fails, fallback to quoted filename extraction.
+    _ACTION_STRIP = re.compile(
+        r"^\s*(?:please\s+)?(?:can\s+you\s+)?(?:could\s+you\s+)?"
+        r"(?:open|delete|remove|trash|erase|create|make|find|search|locate|"
+        r"look\s+for|where\s+is|where\s+are|show|view|display|launch|start|"
+        r"access|load)\s+"
+        r"(?:(?:the|my|a|an|file|document|called|named|titled)\s+)*",
+        re.I,
+    )
+    _ARTICLE_STRIP = re.compile(
+        r"^(?:(?:the|my|a|an|file|document|called|named|titled)\s+)+", re.I
+    )
+    # Match a strict filename: word chars/hyphens, a dot, 2-5 word-char extension
+    _FNAME_RE = re.compile(r"\b([\w][\w\-]*(?:\.[\w\-]+)*\.\w{2,5})\b")
+
+    results = []
+    for segment in segments:
+        seg = segment.strip()
+        # Strip leading action words (only on first segment or if present)
+        seg = _ACTION_STRIP.sub("", seg)
+        seg = _ARTICLE_STRIP.sub("", seg).strip()
+
+        for m in _FNAME_RE.finditer(seg):
+            candidate = m.group(1).strip()
+            if candidate.lower() in ("file", "document"):
+                continue
+            if candidate not in results:
+                results.append(candidate)
+
+    # Fallback: scan the whole original text if nothing found via segments
     if not results:
-        quoted = re.findall(r'["\']([^"\']+)["\']', text)
-        for item in quoted:
-            item = item.strip()
-            if item and re.search(r"\.\w{2,5}$", item) and item not in results:
-                results.append(item)
+        for m in _FNAME_RE.finditer(text):
+            candidate = m.group(1).strip()
+            if candidate.lower() not in ("file", "document") and candidate not in results:
+                results.append(candidate)
 
     return results
 
@@ -546,10 +544,16 @@ def handle_llm_file_command(user_prompt: str, session_id=None) -> dict:
                 else:
                     ambiguous.append((name, files))
 
+            # In the DELETE branch, multi-file path — REPLACE the missing check:
             if missing:
                 return {
                     "status": "error",
-                    "message": f"❌ Could not find: {', '.join(missing)}",
+                    "message": (
+                        f"❌ Could not find: {', '.join(missing)}\n\n"
+                        f"✅ Found: {', '.join(os.path.basename(p) for p in resolved)}"
+                        if resolved else
+                        f"❌ Could not find any of: {', '.join(missing)}"
+                    ),
                     "action": "delete",
                 }
             if ambiguous:
@@ -727,9 +731,21 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
             }
 
     elif state == "delete_confirm":
+        
         if r in ("yes", "y"):
-            files = pending_action.get("files") or [pending_action.get("file")]
-            if isinstance(files, list) and len(files) > 1:
+            
+            
+            # Normalize both key styles
+            files = pending_action.get("files") or []
+            if not files:
+                single = pending_action.get("file")
+                if single:
+                    files = [single]
+            
+            if not files:
+                return {"status": "error", "message": "❌ No file to delete.", "handled": True}
+            
+            if len(files) > 1:
                 results = []
                 success = 0
                 fail = 0
@@ -739,22 +755,26 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
                         success += 1
                     else:
                         fail += 1
-                    results.append(f"{'✅' if result['status'] == 'success' else '❌'} {result['message']}")
+                    results.append(
+                        f"{'✅' if result['status'] == 'success' else '❌'} {result['message']}"
+                    )
                 return {
                     "status": "success",
                     "message": (
-                        f"📋 Delete results:\n\n✅ Success: {success}\n❌ Failed: {fail}\n\n" + "\n".join(results)
+                        f"📋 Delete results:\n\n✅ Success: {success}\n❌ Failed: {fail}\n\n"
+                        + "\n".join(results)
                     ),
                     "action": "delete",
                     "handled": True,
                 }
-            result = delete_file(pending_action.get("file") or files[0])
+            result = delete_file(files[0])
             return {
                 "status": result["status"],
                 "message": result["message"],
                 "action": "delete",
                 "handled": True,
             }
+           
         elif r in ("no", "n", "cancel"):
             return {
                 "status": "success",
