@@ -12,13 +12,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QPushButton,
     QLabel,
-    QLineEdit,
     QScrollArea,
     QFrame,
     QSizePolicy,
     QFileDialog,
     QMessageBox,
-    QLineEdit,
     QTextEdit,
 )
 from PySide6.QtWidgets import QComboBox
@@ -855,7 +853,15 @@ class ChatWindow(QWidget):
 
         # ── state: delete_confirm ─────────────────────────────────────────
         if state == "delete_confirm":
-            files = self.pending_file_action.get("files", [])
+            files = self.pending_file_action.get("files") or []
+            if not files:
+                single = self.pending_file_action.get("file")
+                if single:
+                    files = [single]
+            if not files:
+                self.add_message("❌ No files to delete.", False, save_to_db=False)
+                self.pending_file_action = None
+                return
 
             if r in ("yes", "y"):
                 success_msgs = []
@@ -1001,8 +1007,8 @@ class ChatWindow(QWidget):
                 )
                 self.pending_file_action = {
                     "state":     "delete_confirm",
-                    "file":      file_to_delete,
-                    "files":     data.get("files", []),
+                    "file":      files[0] if files else None,
+                    "files":     files,
                     "operation": "delete",
                 }
                 self.add_message(result["message"], False, save_to_db=False)
@@ -1447,7 +1453,7 @@ class ChatWindow(QWidget):
             result = handle_file_creation(text)
             if result.get("status") == "need_save_location":
                 pending = result.get("pending", {})
-                pending["state"] = "need_save_location"
+                pending["state"] = "location"
                 self.pending_file_action = pending
             self.add_message(result["message"], False, save_to_db=False)
             self.input.setEnabled(True)
@@ -1693,6 +1699,7 @@ class ChatWindow(QWidget):
                         "files":           option_map,
                         "new_names":       new_names,
                         "remaining_files": [g for g in groups if len(g["files"]) == 1],
+                        "original_files":  [g["filename"] for g in groups],
                     }
 
                 self._re_enable()
