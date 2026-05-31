@@ -706,15 +706,6 @@ class ChatWindow(QWidget):
             # Keep pending_file_action intact so user can retry
             return
 
-        if r in ("n", "no", "cancel"):
-            self.add_message(
-                "❌ Skipped — file was not overwritten.",
-                False, save_to_db=False,
-            )
-            self.pending_file_action = None
-            return
-
-        # ── User said yes — delete old file then recreate ──────────────────
         filepath  = pending.get("filepath")
         filename  = pending.get("filename")
         save_path = pending.get("save_path")
@@ -723,6 +714,64 @@ class ChatWindow(QWidget):
         rows      = pending.get("rows", [])
         content   = pending.get("content")
         title     = pending.get("title")
+        filenames = pending.get("filenames", [])
+        pending_messages = pending.get("messages", [])
+
+        from services.file_service import create_file as create_simple_file
+
+        def _process_remaining(remaining_files, base_path, messages=None):
+            messages = messages or []
+            for fname in remaining_files:
+                next_result = create_simple_file(fname, custom_path=base_path)
+                if (
+                    next_result.get("status") == "confirm"
+                    and next_result.get("action") == "overwrite"
+                ):
+                    return {
+                        "status": "overwrite_confirm",
+                        "message": next_result["message"],
+                        "data": {
+                            "filepath": next_result.get("path") or os.path.join(base_path, fname),
+                            "filename": fname,
+                            "save_path": base_path,
+                            "filenames": remaining_files,
+                            "operation": "create",
+                        },
+                        "messages": messages,
+                    }
+                messages.append(next_result["message"])
+            return {"status": "success", "messages": messages}
+
+        if r in ("n", "no", "cancel"):
+            if not filenames or not filename:
+                self.add_message(
+                    "❌ Skipped - file was not overwritten.",
+                    False, save_to_db=False,
+                )
+                self.pending_file_action = None
+                return
+
+            remaining = [f for f in filenames if f != filename]
+            messages = pending_messages + [f"❌ Skipped existing file: {filename}"]
+            if remaining:
+                result = _process_remaining(remaining, save_path, messages)
+                if result["status"] == "overwrite_confirm":
+                    self.pending_file_action = {
+                        "state":     "overwrite_confirm",
+                        "filepath":  result["data"]["filepath"],
+                        "filename":  result["data"]["filename"],
+                        "save_path": result["data"]["save_path"],
+                        "filenames": result["data"]["filenames"],
+                        "messages":  result.get("messages", []),
+                        "operation": "create",
+                    }
+                    self.add_message(result["message"], False, save_to_db=False)
+                    return
+                self.add_message("\n\n".join(result["messages"]), False, save_to_db=False)
+            else:
+                self.add_message("\n\n".join(messages), False, save_to_db=False)
+            self.pending_file_action = None
+            return
 
         try:
             if filepath and os.path.exists(filepath):
@@ -734,32 +783,57 @@ class ChatWindow(QWidget):
             self.pending_file_action = None
             return
 
-        from services.file_creator_service import (
-            create_csv, create_xlsx, create_docx, create_pdf, create_txt,
-        )
+        if file_type:
+            from services.file_creator_service import (
+                create_csv, create_xlsx, create_docx, create_pdf, create_txt,
+            )
 
-        creators = {
-            "csv":  lambda: create_csv(filename, headers, rows, save_path),
-            "xlsx": lambda: create_xlsx(filename, headers, rows, title, save_path),
-            "docx": lambda: create_docx(
-                filename, content, title,
-                headers if headers else None,
-                rows if rows else None,
-                save_path,
-            ),
-            "pdf":  lambda: create_pdf(
-                filename, content, title,
-                headers if headers else None,
-                rows if rows else None,
-                save_path,
-            ),
-            "txt":  lambda: create_txt(filename, content or "", save_path),
-        }
-        creator = creators.get(file_type)
-        if creator:
-            result = creator()
+            creators = {
+                "csv":  lambda: create_csv(filename, headers, rows, save_path),
+                "xlsx": lambda: create_xlsx(filename, headers, rows, title, save_path),
+                "docx": lambda: create_docx(
+                    filename, content, title,
+                    headers if headers else None,
+                    rows if rows else None,
+                    save_path,
+                ),
+                "pdf":  lambda: create_pdf(
+                    filename, content, title,
+                    headers if headers else None,
+                    rows if rows else None,
+                    save_path,
+                ),
+                "txt":  lambda: create_txt(filename, content or "", save_path),
+            }
+            creator = creators.get(file_type)
+            if creator:
+                result = creator()
+            else:
+                result = {"status": "error", "message": f"❌ Unknown file type: {file_type}"}
         else:
-            result = {"status": "error", "message": f"❌ Unknown file type: {file_type}"}
+            if not save_path and filepath:
+                save_path = os.path.dirname(filepath)
+            result = create_simple_file(filename, custom_path=save_path)
+
+        remaining = [f for f in filenames if f != filename]
+        messages = pending_messages + [result["message"]]
+        if remaining:
+            result = _process_remaining(remaining, save_path, messages)
+            if result["status"] == "overwrite_confirm":
+                self.pending_file_action = {
+                    "state":     "overwrite_confirm",
+                    "filepath":  result["data"]["filepath"],
+                    "filename":  result["data"]["filename"],
+                    "save_path": result["data"]["save_path"],
+                    "filenames": result["data"]["filenames"],
+                    "messages":  result.get("messages", []),
+                    "operation": "create",
+                }
+                self.add_message(result["message"], False, save_to_db=False)
+                return
+            self.add_message("\n\n".join(result["messages"]), False, save_to_db=False)
+            self.pending_file_action = None
+            return
 
         self.add_message(result["message"], False, save_to_db=False)
         self.pending_file_action = None
@@ -980,7 +1054,12 @@ class ChatWindow(QWidget):
             if r in ("yes", "y"):
                 file_path = self.pending_file_action.get("file_path")
                 new_name  = self.pending_file_action.get("new_name")
-                result    = rename_file(file_path, new_name)
+                force     = self.pending_file_action.get("force_overwrite", False)
+                result    = rename_file(file_path, new_name, overwrite=force)
+                if result["status"] == "confirm_overwrite" and not force:
+                    self.pending_file_action["force_overwrite"] = True
+                    self.add_message(result["message"], False, save_to_db=False)
+                    return
                 self.add_message(result["message"], False, save_to_db=False)
                 self.pending_file_action = None
                 return
@@ -1002,16 +1081,29 @@ class ChatWindow(QWidget):
 
             elif result["status"] == "confirm":
                 data = result.get("data", {})
-                file_to_delete = data.get("file") or (
-                    data.get("files", [None])[0] if data.get("files") else None
-                )
-                self.pending_file_action = {
-                    "state":     "delete_confirm",
-                    "file":      files[0] if files else None,
-                    "files":     files,
-                    "operation": "delete",
-                }
-                self.add_message(result["message"], False, save_to_db=False)
+                if result.get("action") == "overwrite":
+                    filepath = result.get("path") or data.get("filepath")
+                    filename = os.path.basename(filepath) if filepath else None
+                    save_path = data.get("save_path") or (os.path.dirname(filepath) if filepath else None)
+                    self.pending_file_action = {
+                        "state":     "overwrite_confirm",
+                        "filepath":  filepath,
+                        "filename":  filename,
+                        "save_path": save_path,
+                        "filenames": data.get("filenames", [filename] if filename else []),
+                        "operation": data.get("operation", "create"),
+                    }
+                    self.add_message(result["message"], False, save_to_db=False)
+                else:
+                    files = data.get("files", [])
+                    file_to_delete = data.get("file") or (files[0] if files else None)
+                    self.pending_file_action = {
+                        "state":     "delete_confirm",
+                        "file":      file_to_delete,
+                        "files":     files,
+                        "operation": "delete",
+                    }
+                    self.add_message(result["message"], False, save_to_db=False)
 
             # ── NEW: surface overwrite_confirm from process_file_response ──
             elif result["status"] == "overwrite_confirm":
@@ -1026,6 +1118,8 @@ class ChatWindow(QWidget):
                     "rows":      data.get("rows", []),
                     "content":   data.get("content"),
                     "title":     data.get("title"),
+                    "filenames": data.get("filenames", []),
+                    "operation": data.get("operation", "create"),
                 }
                 self.add_message(result["message"], False, save_to_db=False)
 
@@ -1644,11 +1738,14 @@ class ChatWindow(QWidget):
             message, option_map = build_ambiguous_message(ambiguous, "move")
             self.add_message(message, False, save_to_db=False)
             self.pending_file_action = {
-                "action":          "move",
-                "state":           "select_for_move",
-                "files":           option_map,
-                "destination":     destination,
-                "remaining_files": [g for g in groups if len(g["files"]) == 1],
+                "action":            "move",
+                "state":             "select_for_move",
+                "files":             option_map,
+                "destination":       destination,
+                "remaining_files":   [g for g in groups if len(g["files"]) == 1],
+                "ambiguous_names":   [g["filename"] for g in ambiguous],
+                "resolved_paths":    [],
+                "resolved_filenames": [],
             }
             return "ambiguous"
 
@@ -1688,8 +1785,20 @@ class ChatWindow(QWidget):
                         res = rename_file(pairs[0]["old_path"], pairs[0]["new_name"])
                     else:
                         res = rename_multiple_files(pairs)
-                    self.add_message(res["message"], False, save_to_db=False)
-                    self.pending_file_action = None
+
+                    if res["status"] == "confirm_overwrite":
+                        new_name = pairs[0]["new_name"] if len(pairs) == 1 else os.path.basename(res.get("new_path", ""))
+                        self.pending_file_action = {
+                            "action":         "rename",
+                            "state":          "rename_confirm",
+                            "file_path":      res.get("old_path"),
+                            "new_name":       new_name,
+                            "force_overwrite": True,
+                        }
+                        self.add_message(res["message"], False, save_to_db=False)
+                    else:
+                        self.add_message(res["message"], False, save_to_db=False)
+                        self.pending_file_action = None
                 else:
                     message, option_map = build_ambiguous_message(ambiguous, "rename")
                     self.add_message(message, False, save_to_db=False)
@@ -1782,6 +1891,17 @@ class ChatWindow(QWidget):
 
                         if len(new_names) == 1:
                             res = rename_file(selected_path, new_names[0])
+                            if res["status"] == "confirm_overwrite":
+                                self.pending_file_action = {
+                                    "action":         "rename",
+                                    "state":          "rename_confirm",
+                                    "file_path":      res.get("old_path", selected_path),
+                                    "new_name":       new_names[0],
+                                    "force_overwrite": True,
+                                }
+                                self.add_message(res["message"], False, save_to_db=False)
+                                self._re_enable()
+                                return
                             self.add_message(res["message"], False, save_to_db=False)
                         else:
                             pairs = []
@@ -1820,6 +1940,17 @@ class ChatWindow(QWidget):
                                 self._re_enable()
                                 return
                             res = rename_multiple_files(pairs)
+                            if res["status"] == "confirm_overwrite":
+                                self.pending_file_action = {
+                                    "action":         "rename",
+                                    "state":          "rename_confirm",
+                                    "file_path":      res.get("old_path", selected_path),
+                                    "new_name":       Path(res.get("new_path", selected_path)).name,
+                                    "force_overwrite": True,
+                                }
+                                self.add_message(res["message"], False, save_to_db=False)
+                                self._re_enable()
+                                return
                             self.add_message(res["message"], False, save_to_db=False)
                         self.pending_file_action = None
                     else:
@@ -1856,14 +1987,57 @@ class ChatWindow(QWidget):
                             if isinstance(selected_item, dict)
                             else selected_item
                         )
-                        paths = [selected_path]
+                        selected_filename = (
+                            selected_item["filename"]
+                            if isinstance(selected_item, dict)
+                            else Path(selected_path).name
+                        )
 
+                        resolved_paths = self.pending_file_action.get("resolved_paths", [])
+                        resolved_filenames = self.pending_file_action.get(
+                            "resolved_filenames", []
+                        )
+                        if selected_path not in resolved_paths:
+                            resolved_paths.append(selected_path)
+                        if selected_filename not in resolved_filenames:
+                            resolved_filenames.append(selected_filename)
+
+                        ambiguous_names = self.pending_file_action.get("ambiguous_names", [])
+                        remaining_ambiguous = [
+                            name for name in ambiguous_names if name not in resolved_filenames
+                        ]
+
+                        if remaining_ambiguous:
+                            next_name = remaining_ambiguous[0]
+                            next_options = [
+                                item for item in files
+                                if isinstance(item, dict) and item.get("filename") == next_name
+                            ]
+                            option_lines = [
+                                f"  {idx + 1}. {item['path']}"
+                                for idx, item in enumerate(next_options)
+                            ]
+                            self.add_message(
+                                f"📂 Multiple locations found for '{next_name}'. Choose the correct file:\n"
+                                + "\n".join(option_lines)
+                                + "\n\nEnter number or 'cancel':",
+                                False, save_to_db=False,
+                            )
+                            self.pending_file_action.update({
+                                "files": next_options,
+                                "resolved_paths": resolved_paths,
+                                "resolved_filenames": resolved_filenames,
+                            })
+                            self._re_enable()
+                            return
+
+                        paths = resolved_paths[:]
                         for group in remaining_files:
                             if group.get("files"):
                                 paths.append(group["files"][0])
 
                         destination = _normalise_location(destination) or destination
-                        res         = move_multiple_files(paths, destination)
+                        res = move_multiple_files(paths, destination)
                         self.add_message(res["message"], False, save_to_db=False)
                         self.pending_file_action = None
                     else:

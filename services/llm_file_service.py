@@ -1,4 +1,5 @@
 # services/llm_file_service.py
+import os
 import re
 import json
 from services.file_service import (
@@ -691,6 +692,27 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
     operation = pending_action.get("operation", "")
     r = response_text.strip().lower()
 
+    def _create_files_with_overwrite_check(filenames, custom_path):
+        results = []
+        for fname in filenames:
+            result = create_file(fname, custom_path=custom_path)
+            if result.get("status") == "confirm" and result.get("action") == "overwrite":
+                filepath = result.get("path") or os.path.join(custom_path, fname)
+                return {
+                    "status": "overwrite_confirm",
+                    "message": result["message"],
+                    "data": {
+                        "filepath": filepath,
+                        "filename": os.path.basename(filepath),
+                        "save_path": custom_path,
+                        "filenames": filenames,
+                        "operation": "create",
+                    },
+                    "handled": True,
+                }
+            results.append(result)
+        return results
+
     if state == "select":
         if r in ("cancel", "c", "no"):
             return {
@@ -791,13 +813,13 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
         filenames = pending_action.get("filenames") or [pending_action.get("filename", "")]
         if r in ("1", "desktop"):
             save_path = os.path.join(os.environ.get("USERPROFILE", ""), "Desktop")
-            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+            results = _create_files_with_overwrite_check(filenames, save_path)
         elif r in ("2", "documents"):
             save_path = os.path.join(os.environ.get("USERPROFILE", ""), "Documents")
-            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+            results = _create_files_with_overwrite_check(filenames, save_path)
         elif r in ("3", "downloads"):
             save_path = os.path.join(os.environ.get("USERPROFILE", ""), "Downloads")
-            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+            results = _create_files_with_overwrite_check(filenames, save_path)
         elif r in ("4", "custom", "custom path", "path"):
             return {
                 "status": "ask_custom_path",
@@ -814,7 +836,10 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
         else:
             # Accept direct full path input too
             save_path = response_text.strip()
-            results = [create_file(fname, custom_path=save_path) for fname in filenames]
+            results = _create_files_with_overwrite_check(filenames, save_path)
+
+        if isinstance(results, dict):
+            return results
 
         messages = [result["message"] for result in results]
         return {
@@ -832,7 +857,9 @@ def process_file_response(response_text: str, pending_action: dict) -> dict:
                 "handled": True,
             }
         filenames = pending_action.get("filenames") or [pending_action.get("filename", "")]
-        results = [create_file(fname, custom_path=response_text.strip()) for fname in filenames]
+        results = _create_files_with_overwrite_check(filenames, response_text.strip())
+        if isinstance(results, dict):
+            return results
         messages = [result["message"] for result in results]
         return {
             "status": "success",

@@ -543,6 +543,25 @@ def create_file_at_location(pending: dict, location_input: str) -> dict:
     if not os.path.isdir(save_path):
         return {"status": "error", "message": f"❌ '{save_path}' is not a folder."}
 
+    path = _resolve_path(filename, save_path)
+    if path.exists():
+        return {
+            "status": "exists",
+            "message": (
+                f"⚠️ File already exists: {filename}\n"
+                f"📂 Location: {path.parent}\n\n"
+                "Type 'yes' to overwrite or 'no' to cancel."
+            ),
+            "filepath": str(path),
+            "filename": filename,
+            "save_path": save_path,
+            "file_type": file_type,
+            "headers": headers,
+            "rows": rows,
+            "content": content,
+            "title": title,
+        }
+
     # Create the file
     if file_type == "csv":
         return create_csv(filename, headers, rows, save_path)

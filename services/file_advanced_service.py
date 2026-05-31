@@ -445,7 +445,7 @@ def is_advanced_file_command(text: str) -> bool:
     # move Complexity_Cheatsheet.pdf to Downloads
     # move a.txt and b.txt to Desktop
     # transfer report.docx into D:\Backup
-    if re.search(r"\b(move|transfer)\b", t) and re.search(r"\b(to|into|in)\b", t):
+    if re.search(r"\b(move|transfer)\b", t):
         return True
 
     # Search commands with location
@@ -464,18 +464,34 @@ def is_advanced_file_command(text: str) -> bool:
 # ─────────────────────────────────────────────────────────────
 
 
-def rename_file(old_path: str, new_name: str) -> dict:
+def rename_file(old_path: str, new_name: str, overwrite: bool = False) -> dict:
     old = Path(old_path)
     if not old.exists():
         return {"status": "error", "message": f"❌ File not found: {old_path}"}
     new_path = old.parent / new_name
-    if new_path.exists():
+
+    if new_path == old:
         return {
-            "status": "confirm_overwrite",
-            "message": f"⚠️ '{new_name}' already exists.\n\nType 'yes' to overwrite or 'no' to cancel.",
-            "old_path": str(old),
-            "new_path": str(new_path),
+            "status": "success",
+            "message": (
+                f"✅ No changes needed. '{old.name}' already has that name.\n"
+                f"📂 Location: {old.parent}"
+            ),
         }
+
+    if new_path.exists():
+        if not overwrite:
+            return {
+                "status": "confirm_overwrite",
+                "message": f"⚠️ '{new_name}' already exists.\n\nType 'yes' to overwrite or 'no' to cancel.",
+                "old_path": str(old),
+                "new_path": str(new_path),
+            }
+        try:
+            new_path.unlink()
+        except Exception as e:
+            return {"status": "error", "message": f"❌ Cannot overwrite existing file: {str(e)}"}
+
     try:
         old.rename(new_path)
         return {
@@ -496,6 +512,8 @@ def rename_multiple_files(file_pairs: list) -> dict:
     success = fail = 0
     for pair in file_pairs:
         r = rename_file(pair["old_path"], pair["new_name"])
+        if r["status"] == "confirm_overwrite":
+            return r
         results.append(f"{'✅' if r['status'] == 'success' else '❌'} {r['message']}")
         if r["status"] == "success":
             success += 1
@@ -528,6 +546,9 @@ def move_file(src_path: str, dest_dir: str) -> dict:
                 "status": "error",
                 "message": f"❌ Source is not a file: {src_path}",
             }
+
+        if not dest_dir:
+            return {"status": "error", "message": "❌ Destination folder not specified."}
 
         dest_dir = _normalise_location(dest_dir) or dest_dir
         dest = Path(dest_dir)
