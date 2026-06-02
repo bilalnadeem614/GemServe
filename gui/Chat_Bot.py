@@ -1073,6 +1073,34 @@ class ChatWindow(QWidget):
     def handle_file_operation(self, text):
         """Handle file operation commands using LLM for intent recognition"""
         if self.pending_file_action:
+            if self.pending_file_action.get("action") == "create_file":
+                state = self.pending_file_action.get("state", "")
+                if state in ("location", "need_save_location", "custom_path", "ask_custom_path"):
+                    from services.file_creator_service import create_file_at_location
+
+                    result = create_file_at_location(self.pending_file_action, text)
+                    if result.get("status") == "success":
+                        self.add_message(result["message"], False, save_to_db=False)
+                        self.pending_file_action = None
+                    elif result.get("status") == "exists":
+                        self.pending_file_action = {
+                            "state":     "overwrite_confirm",
+                            "filepath":  result.get("filepath"),
+                            "filename":  result.get("filename"),
+                            "save_path": result.get("save_path"),
+                            "file_type": result.get("file_type"),
+                            "headers":   result.get("headers", []),
+                            "rows":      result.get("rows", []),
+                            "content":   result.get("content"),
+                            "title":     result.get("title"),
+                        }
+                        self.add_message(result["message"], False, save_to_db=False)
+                    else:
+                        self.add_message(result["message"], False, save_to_db=False)
+                        if not result.get("handled"):
+                            self.pending_file_action = None
+                    return
+
             result = process_file_response(text, self.pending_file_action)
 
             if result["status"] == "success":
